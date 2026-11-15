@@ -42,20 +42,25 @@ Secara bawaan `next start` mendengarkan di semua antarmuka jaringan. Untuk memba
 | `HERO_DEMO` | `1` | `0` untuk menyembunyikan daftar akun demo di halaman login |
 | `HERO_SECURE_COOKIE` | `0` | `1` jika server di belakang HTTPS (cookie sesi diberi tanda `Secure`) |
 
-## Akun demo
+## Akun demo (data simulasi)
 
-Kata sandi semua akun: `password123`.
+Semua akun memakai email `[nama]@hero.com` dan kata sandi `password123`.
 
-| Akun | Role | Cabin |
-|---|---|---|
-| `admin@nasa.gov` | Admin | Semua |
-| `admin2@nasa.gov` | Admin | Semua |
-| `alex.vinson@nasa.gov` | **Pemimpin Cabin** | INC-004 Node 2 (bersama Marcus), INC-001 Node 2 |
-| `marcus.vance@nasa.gov` | Anggota Cabin | INC-004 Node 2 (bersama Alex) |
-| `elena.rostova@nasa.gov` | **Pemimpin Cabin** | INC-051 Node 2 (bersama Kenji) |
-| `kenji.takahashi@jaxa.jp` | Anggota Cabin | INC-051 Node 2 (bersama Elena) |
+**Admin:** `teguh@hero.com`, `jeremy@hero.com`, `naila@hero.com`, `abel@hero.com`, `vinson@hero.com`, `nabillah@hero.com`
 
-Akun Admin hanya bisa masuk lewat portal admin, dan akun Pemimpin/Anggota Cabin hanya lewat portal astronot. Jika `data/hero-db.json` sudah ada dari versi sebelumnya, akun `admin2@nasa.gov` baru muncul setelah reset data.
+**Astronot** (3 misi, 3 orang per misi; semisi = sekabin):
+
+| Misi | Kabin | Pemimpin Cabin | Anggota Cabin |
+|---|---|---|---|
+| INC-071 · Ekspedisi 71 (mulai 1 Jun 2026) | Node 2 Harmony | `raka@hero.com` (Cmdr. Raka Pratama) | `sari@hero.com`, `dimas@hero.com` |
+| INC-072 · Ekspedisi 72 (mulai 20 Jul 2026) | Node 3 Tranquility | `putri@hero.com` (Cmdr. Putri Anggraini) | `bima@hero.com`, `laras@hero.com` |
+| INC-073 · Ekspedisi 73 (mulai 10 Sep 2026) | Kibo JEM | `arif@hero.com` (Cmdr. Arif Hidayat) | `maya@hero.com`, `yoga@hero.com` |
+
+Setiap astronot punya data pra-terbang dan 3 pemeriksaan di orbit (mata OD/OS, mental, vital, countermeasure), dan setiap kabin punya 3 bacaan lingkungan. Kondisinya sengaja beragam supaya semua status terlihat. Di tiap misi ada satu astronot dengan tanda SANS dan stres berat, satu sedang, dan satu normal. Kabin INC-071 juga lingkungannya paling bermasalah.
+
+Akun Admin hanya bisa masuk lewat portal admin, dan akun astronot hanya lewat portal astronot.
+
+**Mengganti data lama:** jika `data/hero-db.json` sudah ada dari versi sebelumnya (akun `@nasa.gov`), akun lama masih tersimpan di sana. Hentikan server, jalankan `npm run reset-data`, lalu jalankan lagi; atau login sebagai Admin lalu pakai **Simulasi input → Reset ke data contoh**.
 
 ## Autentikasi & otorisasi
 
@@ -163,7 +168,7 @@ Astronot baru tidak lagi mendapat kata sandi bawaan `password123`. Kata sandi ju
 npm test
 ```
 
-Ada 38 skenario yang memanggil Route Handler sungguhan dengan database sementara. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin.
+Ada 43 skenario yang memanggil Route Handler sungguhan dengan database sementara. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin. `tests/seed.test.js` memeriksa data simulasi (15 akun bisa masuk, 3 orang per misi, isolasi kabin). Uji lainnya memakai data uji tetap di `tests/fixtures/seed.json`, jadi tidak terpengaruh perubahan data demo.
 
 ## Struktur project
 
@@ -196,7 +201,7 @@ hero-project/
 │       ├── access.js      # SEMUA aturan hak akses (saring data & periksa perubahan)
 │       ├── auth.js        # hash kata sandi scrypt, sesi, cookie, batas percobaan login
 │       ├── store.js       # baca/tulis database JSON secara atomik
-│       └── seed.json      # data awal (kata sandi polos hanya di sini, di-hash saat dimuat)
+│       └── seed.json      # data simulasi awal (kata sandi polos hanya di sini, di-hash saat dimuat)
 ├── tests/                 # uji otorisasi & fitur Admin (npm test)
 └── data/                  # dibuat otomatis, berisi hero-db.json
 ```

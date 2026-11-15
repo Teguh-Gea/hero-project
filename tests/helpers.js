@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export function useTempData() {
+// Database sementara dari data uji tetap (tests/fixtures/seed.json), terpisah dari data demo
+export function useTempData({ seed = path.join(process.cwd(), 'tests', 'fixtures', 'seed.json') } = {}) {
+    process.env.HERO_SEED_FILE = seed;
     process.env.HERO_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hero-test-'));
     return process.env.HERO_DATA_DIR;
 }

@@ -576,10 +576,10 @@ const HERO_COMMAND_CATALOG = [
     { g: 'astro', id: 'Tambahkan astronot', en: 'Add astronaut', aid: 'Membuka Simulasi Input dalam mode tambah astronot baru (isi profil + data pertama)', aen: 'Opens the Input Simulator in add-new-astronaut mode (profile + first record)' },
     { g: 'astro', id: 'Tambah data pemeriksaan', en: 'Add new scan', aid: 'Membuka Simulasi Input untuk menambah data hari baru (D+terakhir+30) bagi astronot aktif', aen: 'Opens the Input Simulator to add a new day (last D+30) for the active astronaut' },
     { g: 'astro', id: 'Ubah data astronot', en: 'Edit astronaut data', aid: 'Membuka Simulasi Input dan memuat data hari yang sedang dilihat agar bisa diubah', aen: 'Opens the Input Simulator with the currently viewed day loaded for editing' },
-    { g: 'astro', id: 'Pilih astronot Elena', en: 'Select astronaut Elena', aid: 'Mengganti astronot aktif berdasarkan nama atau ID (mis. "astronot 0154")', aen: 'Switches the active astronaut by name or ID (e.g. "astronaut 0154")' },
+    { g: 'astro', id: 'Pilih astronot Raka', en: 'Select astronaut Raka', aid: 'Mengganti astronot aktif berdasarkan nama atau ID (mis. "astronot 0101")', aen: 'Switches the active astronaut by name or ID (e.g. "astronaut 0101")' },
     { g: 'astro', id: 'Astronot berikutnya', en: 'Next astronaut', aid: 'Pindah ke astronot berikutnya di daftar', aen: 'Moves to the next astronaut in the list' },
     { g: 'astro', id: 'Astronot sebelumnya', en: 'Previous astronaut', aid: 'Pindah ke astronot sebelumnya di daftar', aen: 'Moves to the previous astronaut in the list' },
-    { g: 'astro', id: 'Tampilkan misi INC-051', en: 'Show mission INC-051', aid: 'Memfilter kru berdasarkan misi dan memilih astronot pertamanya', aen: 'Filters the crew by mission and selects its first astronaut' },
+    { g: 'astro', id: 'Tampilkan misi INC-071', en: 'Show mission INC-071', aid: 'Memfilter kru berdasarkan misi dan memilih astronot pertamanya', aen: 'Filters the crew by mission and selects its first astronaut' },
     { g: 'astro', id: 'Tampilkan semua misi', en: 'Show all missions', aid: 'Menghapus filter misi (semua kru tampil)', aen: 'Clears the mission filter (all crew shown)' },
     { g: 'time', id: 'Hari ke 92', en: 'Day 92', aid: 'Melompat ke hari misi D+92 pada timeline', aen: 'Jumps to mission day D+92 on the timeline' },
     { g: 'time', id: 'Scan berikutnya', en: 'Next scan', aid: 'Pindah ke data pemeriksaan berikutnya', aen: 'Moves to the next examination record' },
@@ -1998,7 +1998,7 @@ function generateAstroId(list) {
 function blankSimProfile(list) {
     return {
         id: generateAstroId(list), name: '', email: '', role: 'Mission Specialist',
-        inc: list[0]?.inc || 'INC-051', sex: 'M', age: 36, wt: 75, D: 180,
+        inc: list[0]?.inc || '', sex: 'M', age: 36, wt: 75, D: 180,
         ...DEFAULT_BASELINES
     };
 }
@@ -2013,10 +2013,10 @@ function buildAstroFromProfile(p, scans) {
     const lastDay = scans.length ? Math.max(...scans.map((s) => s.d)) : 0;
     return {
         id,
-        email: String(p.email || '').trim().toLowerCase() || `${id.toLowerCase()}@nasa.gov`,
+        email: String(p.email || '').trim().toLowerCase() || `${id.toLowerCase()}@hero.com`,
         name: String(p.name || '').trim(),
         role: String(p.role || '').trim() || 'Mission Specialist',
-        inc: String(p.inc || '').trim().toUpperCase() || 'INC-051',
+        inc: String(p.inc || '').trim().toUpperCase(),
         sex: p.sex || 'M',
         age: Number(p.age) || 0,
         wt: Number(p.wt) || 0,
@@ -2073,14 +2073,6 @@ const HERO_FALLBACK_SCAN = {
     icp: 12.6, sbp: 118, radLensCum: 0, lbnp: 40, sodium: 1750, co2: 2.3, radDaily: 0.44, noiseDba: 66,
     noisePeakDba: 75, vocPpm: 0.9, pmDust: 14, cabinTemp: 22.2, cabinRh: 45, circadianLux: 275, wrsQuality: 99.1,
     wrsToc: 0.5
-};
-// Tanggal peluncuran contoh: hari ini (15 Nov 2026) ≈ hari pemeriksaan terakhir tiap astronot
-const SEED_MISSIONS = {
-    'INC-004': { name: 'ISS Increment 004', startDate: '2026-06-23' },
-    'INC-051': { name: 'ISS Increment 051', startDate: '2026-06-26' },
-    'INC-012': { name: 'ISS Increment 012', startDate: '2026-06-26' },
-    'INC-022': { name: 'ISS Increment 022', startDate: '2026-06-19' },
-    'INC-001': { name: 'ISS Increment 001', startDate: '2024-09-03', endDate: '2025-01-31' }
 };
 
 
@@ -2363,7 +2355,7 @@ function registerAstronautInDb(db, p, { initialScan = null } = {}) {
     const accId = `ACC-${id}`;
     next.accounts.push({
         id: accId,
-        email: String(p.email || '').trim().toLowerCase() || `${id.toLowerCase()}@nasa.gov`,
+        email: String(p.email || '').trim().toLowerCase() || `${id.toLowerCase()}@hero.com`,
         // Kata sandi dikirim sekali ke server lalu di-hash di sana; klien tidak menyimpan hash
         password: p.password,
         role: 'astronaut',
@@ -2708,7 +2700,7 @@ function SimInputPage({ db, setDb, views, account, isEn, simForm, setSimForm, on
     const mail = String(values.email || "").trim().toLowerCase();
     if (key === "email" && touched.email && mail && !EMAIL_PATTERN.test(mail)) return T("Format email tidak valid.", "Invalid email format.");
     if (key === "password" && touched.password) {
-      const code = passwordProblem(values.password, { email: mail || `${String(values.id || "").toLowerCase()}@nasa.gov` });
+      const code = passwordProblem(values.password, { email: mail || `${String(values.id || "").toLowerCase()}@hero.com` });
       return passwordMessage(code, enFlag);
     }
     if (key === "passwordConfirm" && touched.passwordConfirm && (values.passwordConfirm || "") !== (values.password || "")) return passwordMessage("mismatch", enFlag);
@@ -2780,7 +2772,7 @@ function SimInputPage({ db, setDb, views, account, isEn, simForm, setSimForm, on
       if (email && !EMAIL_PATTERN.test(email)) return setError(T(`Format email ${email} tidak valid.`, `${email} is not a valid email.`));
       if (email && db.accounts.some((a) => a.email === email)) return setError(T(`Email ${email} sudah dipakai.`, `Email ${email} is already in use.`));
       if (!findMissionCabin(db, String(v.inc || ""))) return setError(T("Pilih misi. Astronot satu misi otomatis tinggal di kabin yang sama.", "Choose a mission. Astronauts on the same mission share its cabin."));
-      const pwCode = passwordProblem(v.password, { email: email || `${id.toLowerCase()}@nasa.gov`, confirm: v.passwordConfirm });
+      const pwCode = passwordProblem(v.password, { email: email || `${id.toLowerCase()}@hero.com`, confirm: v.passwordConfirm });
       if (pwCode) {
         setTouched((t) => ({ ...t, password: true, passwordConfirm: true }));
         return setError(passwordMessage(pwCode, T(false, true)));
@@ -3075,7 +3067,7 @@ export default function HeroApp({ portal }) {
     const [highlightedSection, setHighlightedSection] = useState(null); // 'scores' | 'twin' | 'biomarkers' | 'countermeasures'
     const [fuzzyIntentBadge, setFuzzyIntentBadge] = useState('');
     const [missionFilter, setMissionFilter] = useState('ALL');
-    const [selectedAstroId, setSelectedAstroId] = useState('AST-0012');
+    const [selectedAstroId, setSelectedAstroId] = useState('AST-0101');
     const [selectedDay, setSelectedDay] = useState(145);
     const [twinMapLayer, setTwinMapLayer] = useState('trt');
     const [twinMode, setTwinMode] = useState('sagittal'); // 'fundus' | 'sagittal' | 'whole'
@@ -3151,7 +3143,7 @@ export default function HeroApp({ portal }) {
     const neuralAudioCacheRef = useRef(new Map());
     const inflightNeuralFetchRef = useRef(new Map());
     // --- TAB 2 STATE: SIMULASI INPUT DATA (7 OCT + 7 BHP + 7 ISS ENV) ---
-    const [simForm, setSimForm] = useState({ astroId: 'AST-0012', missionDay: 145, domain: 'ocular', eye: 'OD' });
+    const [simForm, setSimForm] = useState({ astroId: 'AST-0101', missionDay: 165, domain: 'ocular', eye: 'OD' });
     // --- REGISTRATION STATE (USED IN AUTH GATE & TAB 3) ---
     const [regForm, setRegForm] = useState(() => ({ ...loadDraft('hero_reg_draft', {
         id: 'AST-0204',
@@ -4621,7 +4613,7 @@ export default function HeroApp({ portal }) {
     };
     const createNewAstronautProfile = () => {
         const cleanId = regForm.id.trim().toUpperCase();
-        const cleanEmail = regForm.email.trim().toLowerCase() || `${cleanId.toLowerCase()}@nasa.gov`;
+        const cleanEmail = regForm.email.trim().toLowerCase() || `${cleanId.toLowerCase()}@hero.com`;
         const cleanPass = regForm.password;
         return {
             id: cleanId,
@@ -5395,8 +5387,8 @@ export default function HeroApp({ portal }) {
         const isAdminPortal = HERO_PORTAL === 'admin';
         const loginIdErr = loginTouched && !loginInput.trim()
             ? isAdminPortal
-                ? (isEn ? 'Enter your admin email, e.g. admin@nasa.gov.' : 'Isi email admin, contoh admin@nasa.gov.')
-                : (isEn ? 'Enter your email or astronaut ID, e.g. alex.vinson@nasa.gov.' : 'Isi email atau ID astronot, contoh alex.vinson@nasa.gov.')
+                ? (isEn ? 'Enter your admin email, e.g. teguh@hero.com.' : 'Isi email admin, contoh teguh@hero.com.')
+                : (isEn ? 'Enter your email or astronaut ID, e.g. raka@hero.com.' : 'Isi email atau ID astronot, contoh raka@hero.com.')
             : '';
         if (!sessionChecked) {
             return (React.createElement("div", { className: "hero-root min-h-screen bg-canvas text-stone-500 font-sans flex items-center justify-center px-5" },
@@ -5415,7 +5407,7 @@ export default function HeroApp({ portal }) {
                             ? (isEn ? 'Manage every astronaut, mission, cabin and protocol.' : 'Kelola seluruh astronot, misi, kabin, dan protokol.')
                             : (isEn ? 'See and manage your own health data, and see your cabin mates.' : 'Lihat dan kelola data kesehatan Anda, serta pantau rekan sekabin.'))),
                     React.createElement(Field, { id: "login-id", label: isAdminPortal ? (isEn ? 'Admin email' : 'Email admin') : (isEn ? 'Email or astronaut ID' : 'Email atau ID astronot'), error: loginIdErr, isEn: isEn },
-                        React.createElement("input", { id: "login-id", type: "text", autoComplete: "username", value: loginInput, placeholder: isAdminPortal ? 'admin@nasa.gov' : 'nama@nasa.gov', onChange: (e) => { setLoginInput(e.target.value); setAuthError(''); setLoginTouched(false); }, onBlur: () => setLoginTouched(true), "aria-invalid": !!loginIdErr, className: `${INPUT_CLS} border-stone-200` })),
+                        React.createElement("input", { id: "login-id", type: "text", autoComplete: "username", value: loginInput, placeholder: isAdminPortal ? 'teguh@hero.com' : 'nama@hero.com', onChange: (e) => { setLoginInput(e.target.value); setAuthError(''); setLoginTouched(false); }, onBlur: () => setLoginTouched(true), "aria-invalid": !!loginIdErr, className: `${INPUT_CLS} border-stone-200` })),
                     React.createElement(Field, { id: "login-pass", label: isEn ? 'Password' : 'Kata sandi', isEn: isEn },
                         React.createElement("input", { id: "login-pass", type: "password", autoComplete: "current-password", value: loginPassword, onChange: (e) => { setLoginPassword(e.target.value); setAuthError(''); }, className: `${INPUT_CLS} border-stone-200` })),
                     authError && React.createElement("p", { role: "alert", className: "text-sm text-rose-400" }, authError),
@@ -6248,7 +6240,7 @@ export default function HeroApp({ portal }) {
                         React.createElement("pre", { className: "bg-canvas border border-stone-200 rounded-[14px] p-5 text-xs font-mono text-stone-700 overflow-x-auto leading-relaxed" }, `-- HERO — skema relasional (PostgreSQL). Satu tabel per entitas; skor dihitung, tidak disimpan.
 
 CREATE TABLE missions (
-    mission_id      VARCHAR(16) PRIMARY KEY,          -- INC-004
+    mission_id      VARCHAR(16) PRIMARY KEY,          -- INC-071
     name            VARCHAR(80) NOT NULL,
     vehicle         VARCHAR(24) NOT NULL DEFAULT 'ISS',
     start_date      DATE NOT NULL,
@@ -6256,14 +6248,14 @@ CREATE TABLE missions (
 );
 
 CREATE TABLE modules (
-    module_id       VARCHAR(24) PRIMARY KEY,          -- INC-004-N2
+    module_id       VARCHAR(24) PRIMARY KEY,          -- INC-071-N2
     mission_id      VARCHAR(16) NOT NULL REFERENCES missions(mission_id),
     name            VARCHAR(80) NOT NULL,             -- Node 2 Harmony (ruang kru)
     leader_astronaut_id VARCHAR(16)                   -- pemimpin kabin: satu-satunya astronot yang boleh mengubah bacaan kabin
 );
 
 CREATE TABLE astronauts (
-    astronaut_id    VARCHAR(16) PRIMARY KEY,          -- AST-0012
+    astronaut_id    VARCHAR(16) PRIMARY KEY,          -- AST-0101
     full_name       VARCHAR(100) NOT NULL,
     job_role        VARCHAR(60),
     agency          VARCHAR(16),
@@ -6464,7 +6456,7 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                     const regMissionOk = !!findMissionCabin(db, regForm.inc);
                     const incErr = regTouched.inc && !regMissionOk ? (isEn ? 'Choose a mission. Crew on the same mission share its cabin.' : 'Pilih misi. Kru satu misi tinggal di kabin yang sama.') : '';
                     const emailErr = regTouched.email && regMail && !EMAIL_PATTERN.test(regMail) ? (isEn ? 'Invalid email format.' : 'Format email tidak valid.') : regTouched.email && regMail && db.accounts.some((a) => a.email === regMail) ? (isEn ? 'This email is already used.' : 'Email ini sudah dipakai.') : '';
-                    const pwCode = passwordProblem(regForm.password, { email: regMail || `${regForm.id.trim().toLowerCase()}@nasa.gov` });
+                    const pwCode = passwordProblem(regForm.password, { email: regMail || `${regForm.id.trim().toLowerCase()}@hero.com` });
                     const passErr = regTouched.password ? passwordMessage(pwCode, isEn) : '';
                     const confirmErr = regTouched.passwordConfirm && (regForm.passwordConfirm || '') !== regForm.password ? passwordMessage('mismatch', isEn) : '';
                     const blurOn = (k) => ({ onBlur: () => setRegTouched((t) => ({ ...t, [k]: true })) });
@@ -6496,7 +6488,7 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                         React.createElement(Field, { id: "reg-role", label: isEn ? 'Role' : 'Peran', isEn: isEn },
                             React.createElement("input", { id: "reg-role", type: "text", value: regForm.role, onChange: (e) => setRegForm({ ...regForm, role: e.target.value }), className: `${INPUT_CLS} border-stone-200` })),
                         React.createElement(Field, { id: "reg-email", label: "Email", optional: true, error: emailErr, isEn: isEn },
-                            React.createElement("input", { id: "reg-email", type: "email", autoComplete: "email", value: regForm.email, placeholder: `${(regForm.id.trim() || 'ast-0000').toLowerCase()}@nasa.gov`, onChange: (e) => { setRegForm({ ...regForm, email: e.target.value }); setRegTouched((t) => ({ ...t, email: false })); }, ...blurOn('email'), "aria-invalid": !!emailErr, "aria-describedby": emailErr ? 'reg-email-err' : undefined, className: `${INPUT_CLS} ${emailErr ? 'border-rose-400' : 'border-stone-200'}` })),
+                            React.createElement("input", { id: "reg-email", type: "email", autoComplete: "email", value: regForm.email, placeholder: `${(regForm.id.trim() || 'ast-0000').toLowerCase()}@hero.com`, onChange: (e) => { setRegForm({ ...regForm, email: e.target.value }); setRegTouched((t) => ({ ...t, email: false })); }, ...blurOn('email'), "aria-invalid": !!emailErr, "aria-describedby": emailErr ? 'reg-email-err' : undefined, className: `${INPUT_CLS} ${emailErr ? 'border-rose-400' : 'border-stone-200'}` })),
                         React.createElement(Field, { id: "reg-pass", label: isEn ? 'Password' : 'Kata sandi', error: passErr, isEn: isEn },
                             React.createElement("input", { id: "reg-pass", type: "password", autoComplete: "new-password", value: regForm.password, onChange: (e) => { setRegForm({ ...regForm, password: e.target.value }); setRegTouched((t) => ({ ...t, password: false })); }, ...blurOn('password'), "aria-invalid": !!passErr, "aria-describedby": passErr ? 'reg-pass-err' : 'reg-pass-hint', className: `${INPUT_CLS} ${passErr ? 'border-rose-400' : 'border-stone-200'}` }),
                             !passErr && React.createElement("p", { id: "reg-pass-hint", className: "text-xs text-stone-500" }, isEn ? PASSWORD_HINT[1] : PASSWORD_HINT[0])),
