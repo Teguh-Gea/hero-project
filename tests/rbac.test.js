@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+process.env.HERO_SEED_FILE = path.join(process.cwd(), 'tests', 'fixtures', 'seed.json');
 process.env.HERO_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hero-test-'));
 
 let R, authz, store;
