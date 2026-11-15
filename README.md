@@ -1,280 +1,291 @@
-# HERO: portal admin dan portal astronot
+# HERO: admin portal and astronaut portal
 
-HERO memantau kesehatan mata (SANS), kesehatan mental (BHP), dan lingkungan kabin ISS tiap astronot. Project ini dibangun dengan **Next.js (App Router)** dan memisahkan dua portal yang berjalan di satu server:
+HERO monitors each astronaut's eye health (SANS), mental health (BHP), and ISS cabin environment. The project is built with **Next.js (App Router)** and serves two separate portals from one server:
 
-| Portal | Alamat | Untuk |
+| Portal | Address | For |
 |---|---|---|
-| Admin | `http://localhost:3000/admin` | Pengelola semua data (juga bertindak sebagai flight surgeon) |
-| Astronot | `http://localhost:3000/astronot` | Astronot, termasuk pemimpin kabin |
+| Admin | `http://localhost:3000/admin` | Manages all data (also acts as flight surgeon) |
+| Astronaut | `http://localhost:3000/astronot` | Astronauts, including cabin leaders |
 
-Hak akses diperiksa di **server**, bukan hanya di tampilan. Astronot tidak menerima data di luar haknya sama sekali, dan setiap perubahan yang dikirim ke server diperiksa ulang.
+Access rights are enforced on the **server**, not just in the UI. Astronauts never receive data outside their rights, and every change sent to the server is checked again.
 
-## Menjalankan
+## Running
 
-Butuh Node.js 20.9 atau lebih baru.
+Requires Node.js 20.9 or newer.
 
 ```bash
 cd hero-project
 npm install
-npm run dev          # mode pengembangan (hot reload) di http://localhost:3000
+npm run dev          # development mode (hot reload) at http://localhost:3000
 ```
 
-Untuk produksi:
+For production:
 
 ```bash
 npm run build
 npm start            # next start, port 3000
 ```
 
-Font Geist di-host sendiri lewat `next/font` dan React/ikon dibundel saat build, jadi browser tidak lagi memuat apa pun dari CDN.
+The Geist font is self-hosted through `next/font`, and React and the icons are bundled at build time, so the browser no longer loads anything from a CDN.
 
-Tanpa `DATABASE_URL`, data disimpan di file `data/hero-db.json` dan sesi di memori. Saat pertama kali API dipanggil, server membuat file itu dari data simulasi di `lib/server/seed.js`. Untuk kembali ke data awal: hentikan server lalu jalankan `npm run reset-data`, atau pakai tombol **Reset ke data contoh** di portal admin (menu Simulasi input).
+Without `DATABASE_URL`, data is stored in the file `data/hero-db.json` and sessions are kept in memory. On the first API call, the server creates that file from the simulation data in `lib/server/seed.js`. To go back to the initial data, stop the server and run `npm run reset-data`, or use the **Reset to sample data** button in the admin portal (Input simulator menu).
 
-## Deploy ke Vercel (database Neon Postgres)
+## Deploying to Vercel (Neon Postgres database)
 
-Di Vercel, file sistem hanya-baca dan server berjalan di banyak instance. Karena itu HERO memakai Postgres secara otomatis jika ada `DATABASE_URL`. Data, sesi login, dan batas percobaan login semuanya disimpan di sana.
+On Vercel the file system is read-only and the server runs on many instances. HERO therefore switches to Postgres automatically when `DATABASE_URL` is present. Data, login sessions, and login attempt limits are all stored there.
 
-1. Di dashboard Vercel, buka proyek → **Storage** → pilih **Neon** (Serverless Postgres) → **Install / Create**. Paket gratis sudah cukup.
-2. Hubungkan database ke proyek ini (**Connect Project**) untuk Production, Preview, dan Development. Vercel otomatis menambahkan `DATABASE_URL` di **Settings → Environment Variables**. Jika Anda memberi awalan lain, misalnya `STORAGE_DATABASE_URL`, itu juga dikenali.
-3. **Deploy ulang** (**Deployments** → deploy terakhir → **Redeploy**). Variabel lingkungan baru hanya terbaca oleh deploy yang dibuat setelah variabel itu ditambahkan.
-4. Buka situsnya dan login, misalnya `teguh@hero.com` / `password123`. Permintaan pertama otomatis membuat tabel (`hero_state`, `hero_sessions`, `hero_login_attempts`) dan mengisinya dengan data simulasi.
+1. In the Vercel dashboard, open the project → **Storage** → choose **Neon** (Serverless Postgres) → **Install / Create**. The free plan is enough.
+2. Connect the database to this project (**Connect Project**) for Production, Preview, and Development. Vercel adds `DATABASE_URL` under **Settings → Environment Variables** automatically. A different prefix, such as `STORAGE_DATABASE_URL`, is also recognized.
+3. **Redeploy** (**Deployments** → latest deployment → **Redeploy**). New environment variables are only picked up by deployments created after they were added.
+4. Open the site and sign in, for example with `teguh@hero.com` / `password123`. The first request creates the tables (`hero_state`, `hero_sessions`, `hero_login_attempts`) and fills them with the simulation data.
 
-Kembali ke data simulasi di Vercel: login sebagai Admin → **Simulasi input → Reset ke data contoh**. (`npm run reset-data` hanya untuk file lokal.)
+To return to the simulation data on Vercel, sign in as an Admin and use **Input simulator → Reset to sample data**. (`npm run reset-data` only applies to the local file.)
 
-Cookie sesi otomatis bertanda `Secure` di Vercel. Jika muncul pesan "Database belum tersambung" atau "Gagal terhubung ke database", periksa langkah 2–3. Untuk memakai database Neon yang sama dari komputer sendiri, jalankan `vercel env pull .env.local` lalu `npm run dev`.
+Session cookies are marked `Secure` automatically on Vercel. If you see "Database belum tersambung" (database not connected) or "Gagal terhubung ke database" (could not connect to the database), check steps 2–3. To use the same Neon database from your own computer, run `vercel env pull .env.local` and then `npm run dev`.
 
-**Cara datanya disimpan:**
-- Seluruh data HERO disimpan sebagai satu dokumen JSONB di baris `hero_state`, dengan kolom `version`.
-- Setiap permintaan membaca salinannya sendiri. Saat menyimpan, versinya dicek (*optimistic locking*). Jika permintaan lain sudah menyimpan lebih dulu, permintaan diulang otomatis dengan data terbaru, termasuk semua pemeriksaan hak aksesnya.
-- ID sesi disimpan sebagai hash SHA-256.
+**How the data is stored:**
+- All HERO data is stored as a single JSONB document in the `hero_state` row, with a `version` column.
+- Each request reads its own copy. When saving, the version is checked (*optimistic locking*). If another request saved first, the request is retried automatically with the latest data, including all of its access checks.
+- Session IDs are stored as SHA-256 hashes.
 
-### Pengaturan lewat variabel lingkungan
+### Environment variables
 
-Secara bawaan `next start` mendengarkan di semua antarmuka jaringan. Untuk membatasi ke komputer ini saja: `npm start -- -H 127.0.0.1`.
+By default `next start` listens on all network interfaces. To restrict it to this computer only: `npm start -- -H 127.0.0.1`.
 
-
-| Variabel | Bawaan | Fungsi |
+| Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `3000` | Port server (atau `npm start -- -p 4000`) |
-| `HERO_DATA_DIR` | `./data` | Folder file database |
-| `HERO_DEMO` | `1` | `0` untuk menyembunyikan daftar akun demo di halaman login |
-| `GEMINI_API_KEY` | (kosong) | Mengaktifkan suara neural HERO AI Assistant (Gemini TTS) lewat `/api/tts`. Key hanya ada di server. Tanpa key, dipakai suara perangkat yang paling natural |
-| `GEMINI_TTS_VOICE` | `Sulafat` | Nama suara Gemini, mis. `Achernar`, `Aoede`, `Kore` |
-| `DATABASE_URL` | (kosong) | URL Postgres (Neon). Jika ada, data & sesi disimpan di Postgres; jika tidak, di file + memori |
-| `HERO_SECURE_COOKIE` | `0` (`1` di Vercel) | `1` jika server di belakang HTTPS (cookie sesi diberi tanda `Secure`) |
+| `PORT` | `3000` | Server port (or `npm start -- -p 4000`) |
+| `HERO_DATA_DIR` | `./data` | Folder for the database file |
+| `HERO_DEMO` | `1` | `0` hides the demo account list on the login page |
+| `GEMINI_API_KEY` | (empty) | Enables the neural voice of HERO AI Assistant (Gemini TTS) through `/api/tts`. The key stays on the server. Without a key, the most natural voice on the device is used |
+| `GEMINI_TTS_VOICE` | `Sulafat` | Gemini voice name, e.g. `Achernar`, `Aoede`, `Kore` |
+| `DATABASE_URL` | (empty) | Postgres (Neon) URL. If set, data and sessions are stored in Postgres; otherwise in a file and in memory |
+| `HERO_SECURE_COOKIE` | `0` (`1` on Vercel) | `1` when the server is behind HTTPS (session cookie gets the `Secure` flag) |
 
-## Akun demo (data simulasi)
+## Demo accounts (simulation data)
 
-Semua akun memakai email `[nama]@hero.com` dan kata sandi `password123`.
+All accounts use the email `[name]@hero.com` and the password `password123`.
 
-**Admin:** `teguh@hero.com`, `jeremy@hero.com`, `naila@hero.com`, `abel@hero.com`, `vinson@hero.com`, `nabillah@hero.com`
+**Admins:** `teguh@hero.com`, `jeremy@hero.com`, `naila@hero.com`, `abel@hero.com`, `vinson@hero.com`, `nabillah@hero.com`
 
-**Astronot** (3 misi, 3 orang per misi; semisi = sekabin):
+**Astronauts** (3 missions, 3 people per mission; same mission = same cabin):
 
-| Misi | Kabin | Pemimpin Cabin | Anggota Cabin |
+| Mission | Cabin | Cabin leader | Cabin members |
 |---|---|---|---|
-| INC-071 · Ekspedisi 71 (mulai 1 Jun 2026) | Node 2 Harmony | `raka@hero.com` (Cmdr. Raka Pratama) | `sari@hero.com`, `dimas@hero.com` |
-| INC-072 · Ekspedisi 72 (mulai 20 Jul 2026) | Node 3 Tranquility | `putri@hero.com` (Cmdr. Putri Anggraini) | `bima@hero.com`, `laras@hero.com` |
-| INC-073 · Ekspedisi 73 (mulai 10 Sep 2026) | Kibo JEM | `arif@hero.com` (Cmdr. Arif Hidayat) | `maya@hero.com`, `yoga@hero.com` |
+| INC-071 · Ekspedisi 71 (starts 1 Jun 2026) | Node 2 Harmony | `raka@hero.com` (Cmdr. Raka Pratama) | `sari@hero.com`, `dimas@hero.com` |
+| INC-072 · Ekspedisi 72 (starts 20 Jul 2026) | Node 3 Tranquility | `putri@hero.com` (Cmdr. Putri Anggraini) | `bima@hero.com`, `laras@hero.com` |
+| INC-073 · Ekspedisi 73 (starts 10 Sep 2026) | Kibo JEM | `arif@hero.com` (Cmdr. Arif Hidayat) | `maya@hero.com`, `yoga@hero.com` |
 
-Setiap astronot punya data pra-terbang dan 3 pemeriksaan di orbit (mata OD/OS, mental, vital, countermeasure), dan setiap kabin punya 3 bacaan lingkungan. Kondisinya sengaja beragam supaya semua status terlihat. Di tiap misi ada satu astronot dengan tanda SANS dan stres berat, satu sedang, dan satu normal. Kabin INC-071 juga lingkungannya paling bermasalah.
+Every astronaut has pre-flight data and 3 in-orbit examinations (eye OD/OS, mental, vitals, countermeasures), and every cabin has 3 environment readings. Conditions vary on purpose so that every status is visible. Each mission has one astronaut with severe SANS and stress signs, one moderate, and one normal. The INC-071 cabin also has the most problematic environment.
 
-Akun Admin hanya bisa masuk lewat portal admin, dan akun astronot hanya lewat portal astronot.
+Admin accounts can only sign in through the admin portal, and astronaut accounts only through the astronaut portal.
 
-**Mengganti data lama:** jika `data/hero-db.json` sudah ada dari versi sebelumnya (akun `@nasa.gov`), akun lama masih tersimpan di sana. Hentikan server, jalankan `npm run reset-data`, lalu jalankan lagi; atau login sebagai Admin lalu pakai **Simulasi input → Reset ke data contoh**.
+**Replacing old data:** if `data/hero-db.json` already exists from an earlier version (`@nasa.gov` accounts), the old accounts are still stored there. Stop the server, run `npm run reset-data`, and start it again; or sign in as an Admin and use **Input simulator → Reset to sample data**.
 
-## HERO AI Assistant (suara)
+## HERO AI Assistant (voice)
 
-- Bahasa bawaan **Inggris**. Pilihan ID/EN diingat di browser.
-- Mikrofon "Hi HERO" menyala otomatis setelah masuk, dan bisa dimatikan atau dinyalakan lewat tombol mikrofon di widget asisten (kanan bawah).
-- Suara paling manusiawi didapat dengan mengisi `GEMINI_API_KEY` di Vercel (Settings → Environment Variables), lalu deploy ulang. Suara disintesis di server (`/api/tts`, hanya untuk pengguna yang sudah masuk), jadi key tidak pernah sampai ke browser.
-- Tanpa key, asisten memakai suara perangkat yang paling natural, misalnya "Microsoft … Online (Natural)" di Edge atau "Google US English" di Chrome, dengan nada dan tempo normal.
-- Daftar perintah (**Command list**) mengikuti role: perintah khusus Admin (Misi, Pengguna, Riset & SQL, tambah astronot, protokol) tidak tampil untuk astronot. Jika tetap diucapkan, asisten menolaknya dengan sopan.
-- Logika perintah ada di `lib/voice-commands.js`. `tests/voice-commands.test.js` memastikan setiap frasa di daftar dipahami persis seperti deskripsinya, dalam kedua bahasa dan untuk kedua role.
+- The default language is **English**. The ID/EN choice is remembered in the browser.
+- The "Hi HERO" microphone turns on automatically after sign-in, and can be turned off or on with the microphone button in the assistant widget (bottom right).
+- The most human-sounding voice comes from setting `GEMINI_API_KEY` on Vercel (Settings → Environment Variables) and redeploying. Speech is synthesized on the server (`/api/tts`, for signed-in users only), so the key never reaches the browser.
+- Without a key, the assistant uses the most natural voice on the device, such as "Microsoft … Online (Natural)" in Edge or "Google US English" in Chrome, at normal pitch and speed.
+- The **Command list** follows the user's role: Admin-only commands (Missions, Users, Research & SQL, adding astronauts, protocols) are hidden from astronauts. If an astronaut says one anyway, the assistant politely declines.
+- The command logic lives in `lib/voice-commands.js`. `tests/voice-commands.test.js` makes sure every phrase in the list is understood exactly as described, in both languages and for both roles.
 
-## Autentikasi & otorisasi
+## Authentication & authorization
 
-### Autentikasi
+### Authentication
 
-HERO memakai sistem autentikasi buatan sendiri yang sudah ada sejak awal (tidak memakai Better Auth):
+HERO uses its own authentication system, which has been in place from the start (it does not use Better Auth):
 
-- Login di `/admin/login` atau `/astronot/login`. Kata sandi disimpan sebagai hash scrypt, dan login dibatasi 8 kali gagal per 10 menit.
-- Sesi berupa ID acak 256-bit di cookie `hero_sid` (`HttpOnly`, `SameSite=Strict`, `Secure` di Vercel atau jika `HERO_SECURE_COOKIE=1`), disimpan di Postgres (atau memori saat lokal) sebagai hash. Sesi bertahan 8 jam sejak terakhir dipakai, termasuk setelah browser ditutup.
-- Halaman diproteksi di server (`lib/server/guard-page.js`) sebelum HTML dikirim. Pengguna yang belum login dialihkan ke halaman login portal itu, dan pengguna yang membuka portal yang salah dialihkan ke portal miliknya.
-- Setiap permintaan API membaca ulang akun dari database. Perubahan role atau akun yang dihapus langsung berlaku, dan sesi milik pengguna yang diangkat atau dihapus diakhiri.
+- Sign in at `/admin/login` or `/astronot/login`. Passwords are stored as scrypt hashes, and sign-in is limited to 8 failed attempts per 10 minutes.
+- A session is a random 256-bit ID in the `hero_sid` cookie (`HttpOnly`, `SameSite=Strict`, and `Secure` on Vercel or when `HERO_SECURE_COOKIE=1`), stored as a hash in Postgres (or in memory when running locally). Sessions last 8 hours since last use, including after the browser is closed.
+- Pages are protected on the server (`lib/server/guard-page.js`) before any HTML is sent. Signed-out users are redirected to that portal's login page, and users who open the wrong portal are redirected to their own.
+- Every API request reads the account from the database again. Role changes and deleted accounts take effect immediately, and the sessions of promoted or deleted users are ended.
 
-### Tiga role
+### Three roles
 
-Role efektif dihitung di server dari database, tidak pernah dari data yang dikirim browser.
+The effective role is computed on the server from the database, never from data sent by the browser.
 
-| Role | Dari mana |
+| Role | Source |
 |---|---|
-| **Admin** | `accounts.role = 'admin'`. Boleh lebih dari satu, semua setara. |
-| **Pemimpin Cabin** | Akun astronot yang tercatat di `modules.leaderAstronautId` untuk cabin tempat ia memang ditugaskan |
-| **Anggota Cabin** | Akun astronot lainnya |
+| **Admin** | `accounts.role = 'admin'`. There can be more than one, all with equal rights. |
+| **Cabin leader** | An astronaut account recorded in `modules.leaderAstronautId` for a cabin they are actually assigned to |
+| **Cabin member** | Any other astronaut account |
 
-**Cabin** = modul tempat tinggal kru (`modules`). Astronot masuk cabin lewat `assignments.quartersModuleId`. Tidak ada tabel baru: struktur user, cabin, dan pemimpin sudah ada sebelumnya.
+**Cabin** = the crew quarters module (`modules`). Astronauts join a cabin through `assignments.quartersModuleId`. No new tables were added: the user, cabin, and leader structure already existed.
 
-| Data / fitur | Admin | Pemimpin Cabin | Anggota Cabin |
+| Data / feature | Admin | Cabin leader | Cabin member |
 |---|---|---|---|
-| Profil & data kesehatan diri sendiri | Kelola | Kelola | Kelola |
-| Profil & data kesehatan rekan sekabin | Kelola | Hanya lihat | Hanya lihat |
-| Astronot & data di cabin lain | Kelola | Tidak terlihat | Tidak terlihat |
-| Data lingkungan cabin | Semua cabin | Kelola cabin yang dipimpinnya | Hanya lihat cabinnya |
-| Misi & kabin, penugasan, pendaftaran astronot, akun | Kelola | Lihat milik sendiri* | Lihat milik sendiri* |
-| Menunjuk Pemimpin Cabin (per cabin) | Ya | Tidak | Tidak |
-| Persetujuan protokol (LBNP, lingkungan, BHP) | Ya | Hanya lihat | Hanya lihat |
-| Menu Pengguna, mengangkat Admin, Riset & SQL, reset data | Ya | Tidak | Tidak |
+| Own profile & health data | Manage | Manage | Manage |
+| Cabin mates' profiles & health data | Manage | View only | View only |
+| Astronauts & data in other cabins | Manage | Not visible | Not visible |
+| Cabin environment data | All cabins | Manage the cabin they lead | View their cabin only |
+| Missions & cabins, assignments, astronaut registration, accounts | Manage | View own* | View own* |
+| Appointing cabin leaders (per cabin) | Yes | No | No |
+| Protocol approval (LBNP, environment, BHP) | Yes | View only | View only |
+| Users menu, promoting to Admin, Research & SQL, data reset | Yes | No | No |
 
-\* Jadwal pemeriksaan dan durasi penugasan sendiri boleh diubah.
+\* Their own examination schedule and assignment length can be changed.
 
-### Perubahan role
+### Role changes
 
-Satu-satunya jalan untuk mengubah role adalah `POST /api/admin/users/:id/role` dengan body `{ "role": "admin" }`, dan hanya bisa dipakai Admin. Kolom `role` tidak bisa diubah lewat `/api/sync`.
+The only way to change a role is `POST /api/admin/users/:id/role` with the body `{ "role": "admin" }`, and only an Admin can use it. The `role` column cannot be changed through `/api/sync`.
 
-| Dari | Ke | Hasil |
+| From | To | Result |
 |---|---|---|
-| Pemimpin Cabin / Anggota Cabin | Admin | Diizinkan. Kepemimpinan cabinnya dilepas; profil & data kesehatan tetap ada; ia masuk lagi lewat portal admin. |
-| Admin | Admin | `409`, sudah Admin |
-| Admin | Pemimpin / Anggota Cabin (atau role apa pun) | `403`, role Admin terlindungi |
-| Pemimpin ↔ Anggota | | `403` lewat endpoint ini. Pemimpin ditunjuk per cabin di **Misi → Ganti pemimpin** (lihat di bawah). |
-| Akun sendiri | | `403` |
+| Cabin leader / Cabin member | Admin | Allowed. Their cabin leadership is released; profile and health data are kept; they sign in again through the admin portal. |
+| Admin | Admin | `409`, already an Admin |
+| Admin | Cabin leader / member (or any role) | `403`, the Admin role is protected |
+| Leader ↔ Member | | `403` through this endpoint. Leaders are appointed per cabin in **Missions → Change leader** (see below). |
+| Own account | | `403` |
 
-Proteksi Admin juga berlaku di `/api/sync`: Admin tidak bisa menghapus akun Admin lain atau mengubah email, nama, maupun kata sandinya. Setiap Admin hanya mengelola akunnya sendiri. Akun Admin juga tidak bisa ditunjuk sebagai Pemimpin Cabin.
+Admin protection also applies to `/api/sync`: an Admin cannot delete another Admin's account or change their email, name, or password. Each Admin manages only their own account. Admin accounts also cannot be appointed as cabin leaders.
 
-Pemeriksaan dan perubahan role berjalan dalam satu langkah sinkron di proses Node, tanpa `await` di antaranya, jadi tidak bisa diselipi permintaan lain.
+Role checks and changes run in a single synchronous step in the Node process, with no `await` in between, so no other request can slip in.
 
-### Di mana aturannya
+### Where the rules live
 
-| File | Isi |
+| File | Contents |
 |---|---|
-| `lib/server/authz.js` | Helper terpusat: `getCurrentUser`, `requireAuth`, `requireRole`, `checkPermission`, `checkCabinAccess`, `canChangeRole`, `promoteToAdmin`, `portalRedirect` |
-| `lib/server/access.js` | Penyaringan data per pengguna (`filterDb`) dan pemeriksaan tiap perubahan dari `/api/sync` |
-| `lib/server/http.js` | Pembungkus Route Handler: CSRF, 401 jika belum login, 403 jika role tidak sesuai (`handler(fn, { roles: ['admin'] })`) |
-| `lib/server/guard-page.js` | Proteksi halaman portal di server |
+| `lib/server/authz.js` | Central helpers: `getCurrentUser`, `requireAuth`, `requireRole`, `checkPermission`, `checkCabinAccess`, `canChangeRole`, `promoteToAdmin`, `portalRedirect` |
+| `lib/server/access.js` | Per-user data filtering (`filterDb`) and checks for every change from `/api/sync` |
+| `lib/server/http.js` | Route Handler wrapper: CSRF, 401 when signed out, 403 when the role does not match (`handler(fn, { roles: ['admin'] })`) |
+| `lib/server/guard-page.js` | Server-side protection of the portal pages |
 
-Menu di aplikasi menyesuaikan role (Admin melihat semua menu termasuk **Pengguna** dan **Riset & SQL**), tetapi itu hanya untuk tampilan. Semua aturan tetap diperiksa di server.
+The app's menus adapt to the role (Admins see every menu, including **Users** and **Research & SQL**), but that is only for display. All rules are still enforced on the server.
 
-### Menunjuk Pemimpin Cabin
+### Appointing cabin leaders
 
-Hanya Admin yang bisa menentukan siapa Pemimpin Cabin, lewat **Misi → Ganti pemimpin** pada misi yang bersangkutan (`PUT /api/admin/missions/:id/leader`).
+Only an Admin can decide who leads a cabin, through **Missions → Change leader** on the mission in question (`PUT /api/admin/missions/:id/leader`).
 
-- Pilihannya hanya kru misi itu. Akun Admin tidak bisa dipilih, dan kabin juga boleh dibiarkan tanpa pemimpin.
-- Pemimpin lama otomatis menjadi Anggota Cabin, dan pemimpin baru langsung bisa mengisi data lingkungan kabin tanpa perlu login ulang.
-- Pemimpin dan Anggota Cabin mendapat `403` jika mencoba mengubahnya, baik lewat endpoint ini maupun `/api/sync`.
+- Only that mission's crew can be chosen. Admin accounts cannot be chosen, and a cabin can also be left without a leader.
+- The previous leader automatically becomes a cabin member, and the new leader can enter cabin environment data right away without signing in again.
+- Cabin leaders and members get `403` if they try to change it, whether through this endpoint or through `/api/sync`.
 
-### Misi = kabin
+### Mission = cabin
 
-Setiap misi punya tepat satu kabin, dan **astronot yang semisi selalu sekabin**. Dengan begitu mereka otomatis bisa saling melihat data (lihat tabel di atas).
+Every mission has exactly one cabin, and **astronauts on the same mission always share a cabin**. That way they can automatically see each other's data (see the table above).
 
-- Admin mengelola misi di menu **Misi**: tambah, ubah (nama, tanggal, nama kabin), dan hapus. Membuat misi otomatis membuat kabinnya. Kode misi tidak bisa diubah.
-- Misi yang masih punya astronot tidak bisa dihapus, supaya data kesehatan mereka tidak hilang. Misi kosong dihapus bersama kabin dan data lingkungan kabinnya.
-- Astronot baru, baik dari **Kru → Daftarkan astronot** maupun **Simulasi input → Tambah astronot baru**, wajib memilih misi yang sudah ada. Misi tidak lagi dibuat otomatis dari kode yang diketik.
-- Server selalu menentukan kabin dari misi penugasan, jadi `quartersModuleId` yang dikirim browser diabaikan. Misi dan kabin juga tidak bisa dibuat atau dihapus lewat `/api/sync`.
-- Pemimpin kabin yang penugasannya dihapus otomatis dilepas dari kabin itu.
+- Admins manage missions in the **Missions** menu: add, edit (name, dates, cabin name), and delete. Creating a mission creates its cabin automatically. The mission code cannot be changed.
+- A mission that still has astronauts cannot be deleted, so their health data is not lost. An empty mission is deleted together with its cabin and the cabin's environment data.
+- New astronauts, whether added from **Crew → Register astronaut** or from **Input simulator → Add new astronaut**, must be assigned to an existing mission. Missions are no longer created automatically from a typed code.
+- The server always derives the cabin from the assignment's mission, so any `quartersModuleId` sent by the browser is ignored. Missions and cabins also cannot be created or deleted through `/api/sync`.
+- A cabin leader whose assignment is removed is automatically released from that cabin.
 
-### Akun & kata sandi
+### Accounts & passwords
 
-Admin mengelola akun di menu **Pengguna**:
+Admins manage accounts in the **Users** menu:
 
-- **Tambah:** akun Admin baru, atau akun untuk astronot yang belum punya akun.
-- **Ubah:** email dan kata sandi akun astronot, atau data akunnya sendiri.
-- **Hapus:** akun Pemimpin/Anggota Cabin. Profil dan data kesehatannya tetap ada. Akun Admin tidak bisa dihapus.
+- **Add:** a new Admin account, or an account for an astronaut who does not have one yet.
+- **Edit:** an astronaut account's email and password, or their own account details.
+- **Delete:** cabin leader / member accounts. The profile and health data are kept. Admin accounts cannot be deleted.
 
-Aturan kata sandi ada di `lib/password-policy.js`, dan dipakai sama persis oleh form di browser maupun server:
+The password rules are in `lib/password-policy.js` and are used identically by the browser forms and the server:
 
-- 8–128 karakter, berisi huruf dan angka;
-- tidak diawali atau diakhiri spasi;
-- tidak sama dengan email atau bagian sebelum `@`;
-- kolom "Ulangi kata sandi" harus sama.
+- 8–128 characters, containing letters and numbers;
+- no leading or trailing spaces;
+- not the same as the email or the part before `@`;
+- the "Repeat password" field must match.
 
-Astronot baru tidak lagi mendapat kata sandi bawaan `password123`. Kata sandi juga tidak pernah disimpan di draf browser (localStorage). Mengganti kata sandi akun lain mengakhiri semua sesinya.
+New astronauts no longer get the default password `password123`. Passwords are never stored in browser drafts (localStorage) either. Changing another account's password ends all of its sessions.
 
-`/api/sync` sekarang **atomik**: jika satu perubahan saja ditolak, tidak ada yang disimpan. Contohnya, pendaftaran dengan kata sandi lemah tidak lagi meninggalkan astronot tanpa akun.
+`/api/sync` is now **atomic**: if even one change is rejected, nothing is saved. For example, a registration with a weak password no longer leaves behind an astronaut without an account.
 
-### Menguji
+### Testing
 
 ```bash
 npm test
 ```
 
-Ada 98 uji yang memanggil Route Handler sungguhan dengan database sementara. 43 skenario dijalankan dua kali: dalam mode file dan dalam mode Postgres (`tests/pg-*.test.js`, memakai database tiruan `tests/fake-pg.js`). `tests/postgres.test.js` menambahkan 5 uji khusus Postgres: pengisian awal, sesi di database, batas login, penulisan bersamaan, dan optimistic locking. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin. `tests/seed.test.js` memeriksa data simulasi (15 akun bisa masuk, 3 orang per misi, isolasi kabin). Uji lainnya memakai data uji tetap di `tests/fixtures/seed.json`, jadi tidak terpengaruh perubahan data demo.
+There are 98 tests that call the real Route Handlers against a temporary database:
+- 43 scenarios run twice: in file mode and in Postgres mode (`tests/pg-*.test.js`, using the simulated database `tests/fake-pg.js`).
+- `tests/postgres.test.js` adds 5 Postgres-specific tests: initial seeding, sessions in the database, login limits, concurrent writes, and optimistic locking.
+- `tests/rbac.test.js` covers signed-out access, wrong portal, cabin isolation, IDOR, forged `cabinId`, attempts to demote/delete/take over an Admin, promotion to Admin, and several Admins at once.
+- `tests/admin-crud.test.js` covers password rules, account CRUD, mission CRUD, same mission = same cabin, and atomic sync.
+- `tests/cabin-leader.test.js` covers changing the cabin leader.
+- `tests/seed.test.js` checks the simulation data (all 15 accounts can sign in, 3 people per mission, cabin isolation).
+- `tests/voice-commands.test.js` checks every phrase in the command list.
 
-## Struktur project
+The other tests use fixed test data in `tests/fixtures/seed.json`, so they are not affected by changes to the demo data.
+
+## Project structure
 
 ```
 hero-project/
 ├── package.json
-├── next.config.mjs        # header keamanan, konfigurasi Next.js
-├── postcss.config.mjs     # Tailwind CSS v4 lewat PostCSS
+├── next.config.mjs        # security headers, Next.js configuration
+├── postcss.config.mjs     # Tailwind CSS v4 through PostCSS
 ├── app/
-│   ├── layout.jsx         # <html>, font Geist (next/font), globals.css
-│   ├── globals.css        # palet warna, font, dan aturan dasar HERO (tema gelap) + Tailwind
-│   ├── page.jsx           # halaman pilih portal
-│   ├── admin/             # portal admin: page.jsx + login/page.jsx
-│   ├── astronot/          # portal astronot: page.jsx + login/page.jsx
-│   └── api/               # Route Handler, satu folder per endpoint (lihat tabel API)
+│   ├── layout.jsx         # <html>, Geist font (next/font), globals.css
+│   ├── globals.css        # HERO color palette, fonts, and base rules (dark theme) + Tailwind
+│   ├── page.jsx           # portal picker page
+│   ├── admin/             # admin portal: page.jsx + login/page.jsx
+│   ├── astronot/          # astronaut portal: page.jsx + login/page.jsx
+│   └── api/               # Route Handlers, one folder per endpoint (see the API table)
 ├── components/
-│   ├── hero-portal.jsx    # memuat aplikasi hanya di browser (next/dynamic, ssr: false)
-│   ├── hero-app.jsx       # aplikasi React HERO (dipakai kedua portal lewat prop `portal`)
-│   ├── users-page.jsx     # halaman Pengguna: CRUD akun & angkat Admin (khusus Admin)
-│   ├── missions-page.jsx  # halaman Misi: CRUD misi & kabinnya (khusus Admin)
-│   └── admin-api.js       # pemanggil API & gaya tombol halaman Admin
+│   ├── hero-portal.jsx    # loads the app in the browser only (next/dynamic, ssr: false)
+│   ├── hero-app.jsx       # the HERO React app (shared by both portals through the `portal` prop)
+│   ├── users-page.jsx     # Users page: account CRUD & promoting to Admin (Admin only)
+│   ├── missions-page.jsx  # Missions page: mission & cabin CRUD (Admin only)
+│   └── admin-api.js       # API caller & button styles for the Admin pages
 ├── lib/
-│   ├── password-policy.js # aturan kata sandi (dipakai browser & server)
-│   ├── rf-models.js       # model Random Forest (glaukoma, mental, kabin) dalam JavaScript
-│   └── server/            # hanya dipakai di server
-│       ├── authz.js       # helper otorisasi terpusat (role, permission, cabin, perubahan role)
-│       ├── guard-page.js  # proteksi halaman portal di server
-│       ├── missions.js    # aturan misi = kabin (buat, ubah, hapus)
-│       ├── http.js        # pembantu Route Handler: CSRF, sesi, role, JSON, error
-│       ├── access.js      # SEMUA aturan hak akses (saring data & periksa perubahan)
-│       ├── auth.js        # hash kata sandi scrypt, sesi, cookie, batas percobaan login
-│       ├── store.js       # baca/tulis data: Postgres (optimistic locking) atau file JSON
-│       ├── pg.js          # koneksi & semua SQL Postgres (Neon), aktif jika DATABASE_URL ada
-│       └── seed.js        # data simulasi awal (kata sandi polos hanya di sini, di-hash saat dimuat)
-├── tests/                 # uji otorisasi & fitur Admin (npm test)
-└── data/                  # dibuat otomatis, berisi hero-db.json
+│   ├── password-policy.js # password rules (used by browser & server)
+│   ├── voice-commands.js  # voice/typed command recognition & role-based command list
+│   ├── rf-models.js       # Random Forest models (glaucoma, mental, cabin) in JavaScript
+│   └── server/            # server-only code
+│       ├── authz.js       # central authorization helpers (role, permission, cabin, role changes)
+│       ├── guard-page.js  # server-side protection of the portal pages
+│       ├── missions.js    # mission = cabin rules (create, edit, delete)
+│       ├── http.js        # Route Handler helpers: CSRF, session, role, JSON, errors
+│       ├── access.js      # ALL access rules (filter data & check changes)
+│       ├── auth.js        # scrypt password hashing, sessions, cookies, login attempt limit
+│       ├── store.js       # read/write data: Postgres (optimistic locking) or JSON file
+│       ├── pg.js          # connection & all Postgres (Neon) SQL, active when DATABASE_URL is set
+│       ├── tts.js         # Gemini TTS for the assistant's voice (server-side key)
+│       └── seed.js        # initial simulation data (plain passwords only here, hashed on load)
+├── tests/                 # authorization, Admin feature & voice command tests (npm test)
+└── data/                  # created automatically, contains hero-db.json
 ```
 
 ## API
 
-Semua permintaan yang mengubah data wajib membawa header `X-HERO-Request: 1` (perlindungan CSRF, ditambah cookie `SameSite=Strict`).
+Every request that changes data must carry the header `X-HERO-Request: 1` (CSRF protection, on top of the `SameSite=Strict` cookie).
 
-| Metode | Endpoint | Keterangan |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/demo-accounts?portal=admin\|astronot` | Daftar akun demo (mati jika `HERO_DEMO=0`) |
+| `GET` | `/api/demo-accounts?portal=admin\|astronot` | Demo account list (off when `HERO_DEMO=0`) |
 | `POST` | `/api/login` | `{ email, password, portal }` |
-| `POST` | `/api/logout` | Mengakhiri sesi |
-| `GET` | `/api/session?portal=...` | Pengguna aktif + data yang boleh dilihat |
-| `GET` | `/api/db` | Data yang boleh dilihat |
-| `POST` | `/api/sync` | `{ changes: [{ table, op: 'insert'\|'update'\|'delete', row }] }`; atomik: jika ada yang ditolak, tidak ada yang disimpan dan semua alasannya dikembalikan |
-| `POST` | `/api/admin/reset` | Reset ke data contoh (Admin) |
-| `GET` | `/api/admin/users` | Semua pengguna dengan role efektif & cabin (Admin) |
-| `POST` | `/api/admin/users` | Buat akun: `{ kind: 'admin', name, title?, email, password }` atau `{ kind: 'astronaut', astronautId, email, password }` (Admin) |
-| `PATCH` | `/api/admin/users/:id` | Ubah `email`, `password` (dan `name`, `title` untuk akun Admin sendiri) (Admin) |
-| `DELETE` | `/api/admin/users/:id` | Hapus akun Pemimpin/Anggota Cabin (Admin) |
-| `GET` | `/api/admin/missions` | Misi beserta kabin, pemimpin, dan krunya (Admin) |
-| `POST` | `/api/admin/missions` | `{ id, name, startDate, endDate?, cabinName? }`, membuat misi dan kabinnya (Admin) |
-| `PATCH` | `/api/admin/missions/:id` | Ubah `name`, `startDate`, `endDate`, `cabinName` (Admin) |
-| `PUT` | `/api/admin/missions/:id/leader` | `{ astronautId }` atau `{ astronautId: null }`, menunjuk/mengganti Pemimpin Cabin (Admin) |
-| `DELETE` | `/api/admin/missions/:id` | Hapus misi kosong beserta kabinnya; `409` jika masih ada astronot (Admin) |
-| `POST` | `/api/admin/users/:id/role` | `{ role: 'admin' }`, mengangkat Pemimpin/Anggota Cabin menjadi Admin (Admin) |
+| `POST` | `/api/logout` | Ends the session |
+| `GET` | `/api/session?portal=...` | Current user + the data they may see |
+| `GET` | `/api/db` | The data the user may see |
+| `POST` | `/api/sync` | `{ changes: [{ table, op: 'insert'\|'update'\|'delete', row }] }`; atomic: if anything is rejected, nothing is saved and all reasons are returned |
+| `POST` | `/api/tts` | `{ text, lang }` → assistant voice audio (signed-in users; `501` without `GEMINI_API_KEY`) |
+| `POST` | `/api/admin/reset` | Reset to sample data (Admin) |
+| `GET` | `/api/admin/users` | All users with effective role & cabin (Admin) |
+| `POST` | `/api/admin/users` | Create an account: `{ kind: 'admin', name, title?, email, password }` or `{ kind: 'astronaut', astronautId, email, password }` (Admin) |
+| `PATCH` | `/api/admin/users/:id` | Change `email`, `password` (and `name`, `title` for the Admin's own account) (Admin) |
+| `DELETE` | `/api/admin/users/:id` | Delete a cabin leader / member account (Admin) |
+| `GET` | `/api/admin/missions` | Missions with their cabin, leader, and crew (Admin) |
+| `POST` | `/api/admin/missions` | `{ id, name, startDate, endDate?, cabinName? }`, creates a mission and its cabin (Admin) |
+| `PATCH` | `/api/admin/missions/:id` | Change `name`, `startDate`, `endDate`, `cabinName` (Admin) |
+| `PUT` | `/api/admin/missions/:id/leader` | `{ astronautId }` or `{ astronautId: null }`, appoints/changes the cabin leader (Admin) |
+| `DELETE` | `/api/admin/missions/:id` | Deletes an empty mission with its cabin; `409` if it still has astronauts (Admin) |
+| `POST` | `/api/admin/users/:id/role` | `{ role: 'admin' }`, promotes a cabin leader / member to Admin (Admin) |
 
-Endpoint lain di bawah `/api/` dijawab `404` dalam format JSON.
+Any other endpoint under `/api/` returns a JSON `404`.
 
-## Catatan keamanan
+## Security notes
 
-Ini prototipe. Sebelum dipakai sungguhan:
+This is a prototype. Before real use:
 
-- jalankan di belakang HTTPS (di Vercel sudah otomatis), atau set `HERO_SECURE_COOKIE=1`;
-- ganti semua kata sandi demo dan set `HERO_DEMO=0`;
-- tanpa `DATABASE_URL`, sesi disimpan di memori dan data di satu file, jadi jalankan sebagai **satu proses Node**. Untuk Vercel atau banyak instance, pakai Postgres (lihat Deploy ke Vercel);
-- batas percobaan login memakai alamat dari header `X-Forwarded-For` (entri paling kanan), karena Route Handler Next.js tidak bisa membaca socket. Taruh server di belakang reverse proxy yang mengisi header ini;
-- di Postgres seluruh data masih disimpan sebagai satu dokumen JSONB, sehingga setiap penyimpanan menulis ulang seluruh data. Ini cukup untuk puluhan pengguna. Untuk skala lebih besar, pecah menjadi tabel-tabel (skema relasional ada di menu Riset & SQL).
+- run behind HTTPS (automatic on Vercel), or set `HERO_SECURE_COOKIE=1`;
+- change all demo passwords and set `HERO_DEMO=0`;
+- without `DATABASE_URL`, sessions live in memory and data in a single file, so run it as **a single Node process**. For Vercel or multiple instances, use Postgres (see Deploying to Vercel);
+- the login attempt limit uses the address from the `X-Forwarded-For` header (rightmost entry), because Next.js Route Handlers cannot read the socket. Put the server behind a reverse proxy that sets this header;
+- in Postgres all data is still stored as a single JSONB document, so every save rewrites all of the data. This is fine for dozens of users. For larger scale, split it into tables (a relational schema is available in the Research & SQL menu).
 
-## Mengubah tampilan
+## Changing the look
 
-Tailwind CSS v4 dikompilasi otomatis oleh Next.js lewat PostCSS, jadi kelas baru di `app/` atau `components/` langsung berlaku tanpa langkah kompilasi manual.
+Tailwind CSS v4 is compiled automatically by Next.js through PostCSS, so new classes in `app/` or `components/` take effect without a manual build step.
 
-`app/globals.css` berisi palet warna, font, dan aturan dasar HERO (tema gelap).
+`app/globals.css` contains the HERO color palette, fonts, and base rules (dark theme).
