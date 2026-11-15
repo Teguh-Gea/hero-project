@@ -490,8 +490,8 @@ const HERO_VOICE_MODELS = [
         name: 'Dr. Clara (Aoede)',
         gender: 'F',
         age: 27,
-        badge: '♀ Perempuan 27 Thn • Dr. Clara (Hangat & Empatik)',
-        badgeEn: '♀ Female 27 Yrs • Dr. Clara (Warm & Empathetic)',
+        badge: 'Perempuan 27 Thn • Dr. Clara (Hangat & Empatik)',
+        badgeEn: 'Female 27 Yrs • Dr. Clara (Warm & Empathetic)',
         stylePrompt: 'Berbicaralah dalam Bahasa Indonesia dengan suara perempuan berusia 27 tahun yang sangat manusiawi, hangat, lembut, ramah, dan berempati seperti dokter pribadi',
         stylePromptEn: 'Speak in English with a very human, warm, gentle, friendly, and empathetic 27-year-old female personal physician voice',
         detuneCents: 15,
@@ -3386,8 +3386,8 @@ export default function HeroApp({ portal }) {
                 ? `Correction Received: "${immediateCorrectionText}"`
                 : `Koreksi Diterima: "${immediateCorrectionText}"`);
             setLiveHeardText(langRef.current === 'en'
-                ? `⚡ Correction: "${immediateCorrectionText}"`
-                : `⚡ Koreksi: "${immediateCorrectionText}"`);
+                ? `Correction: "${immediateCorrectionText}"`
+                : `Koreksi: "${immediateCorrectionText}"`);
             setTimeout(() => {
                 executeVoiceCommandRef.current?.(immediateCorrectionText);
             }, 60);
@@ -3397,8 +3397,8 @@ export default function HeroApp({ portal }) {
                 ? 'Speech interrupted. Apologies if I misunderstood — please state your correction or command.'
                 : 'Ucapan dipotong. Maaf jika saya keliru menangkap maksud Anda — silakan katakan koreksi atau perintah yang benar.');
             setLiveHeardText(langRef.current === 'en'
-                ? '✋ Please speak your correction now...'
-                : '✋ Silakan ucapkan koreksi Anda sekarang...');
+                ? 'Please speak your correction now...'
+                : 'Silakan ucapkan koreksi Anda sekarang...');
             setFuzzyIntentBadge(langRef.current === 'en'
                 ? 'Correction Mode Active — Listening'
                 : 'Mode Koreksi Aktif — Mendengarkan Anda');
@@ -3805,8 +3805,8 @@ export default function HeroApp({ portal }) {
         const targetModelId = overrideModelId || selectedVoiceModelRef.current || selectedVoiceModelId;
         const modelObj = HERO_VOICE_MODELS.find((m) => m.id === targetModelId) || HERO_VOICE_MODELS[0];
         setVoiceEngineBadge(activeLang === 'en'
-            ? `${modelObj.gender === 'F' ? '♀ Female' : '♂ Male'} ${modelObj.age} Yrs • ${modelObj.name}`
-            : `${modelObj.gender === 'F' ? '♀ Perempuan' : '♂ Laki-laki'} ${modelObj.age} Thn • ${modelObj.name}`);
+            ? `${modelObj.gender === 'F' ? 'Female' : 'Male'} ${modelObj.age} Yrs • ${modelObj.name}`
+            : `${modelObj.gender === 'F' ? 'Perempuan' : 'Laki-laki'} ${modelObj.age} Thn • ${modelObj.name}`);
         const resumeMicAndFinish = () => {
             if (speechReqIdRef.current !== currentReqId)
                 return;
@@ -4155,7 +4155,7 @@ export default function HeroApp({ portal }) {
             if (result && result.reply) {
                 setAiMessages((prev) => [
                     ...prev,
-                    { role: 'user', text: `🎤 ${effectiveCommandText}` },
+                    { role: 'user', text: `${effectiveCommandText}` },
                     { role: 'assistant', text: result.reply }
                 ]);
                 speakWithHeroVoice(result.reply, true, result.voiceId || null, result.lang || null);
@@ -4186,7 +4186,7 @@ export default function HeroApp({ portal }) {
                 : `${bargeCheck.isBargeIn ? 'Koreksi diterima. ' : 'Siap, '}${fuzzyIntent.label} telah ${targetVal ? 'diaktifkan' : 'dinonaktifkan'}.`;
             setAiMessages((prev) => [
                 ...prev,
-                { role: 'user', text: `🎤 ${effectiveCommandText}` },
+                { role: 'user', text: `${effectiveCommandText}` },
                 { role: 'assistant', text: rxReply }
             ]);
             speakWithHeroVoice(rxReply, true);
@@ -4212,7 +4212,7 @@ export default function HeroApp({ portal }) {
                 : `Siap, menampilkan ${fuzzyIntent.label}.`;
             setAiMessages((prev) => [
                 ...prev,
-                { role: 'user', text: `🎤 ${effectiveCommandText}` },
+                { role: 'user', text: `${effectiveCommandText}` },
                 { role: 'assistant', text: reply }
             ]);
             speakWithHeroVoice(reply, true);
@@ -4228,7 +4228,7 @@ export default function HeroApp({ portal }) {
         if (conversationalReply) {
             setAiMessages((prev) => [
                 ...prev,
-                { role: 'user', text: `🎤 ${effectiveCommandText}` },
+                { role: 'user', text: `${effectiveCommandText}` },
                 { role: 'assistant', text: conversationalReply }
             ]);
             speakWithHeroVoice(conversationalReply, true);
@@ -4457,8 +4457,8 @@ export default function HeroApp({ portal }) {
                     lastProcessedTranscriptRef.current = finalUtterance.toLowerCase();
                     accumulatedSpeechRef.current = '';
                     setLiveHeardText(langRef.current === 'en'
-                        ? `✓ Received: "${finalUtterance}"`
-                        : `✓ Kalimat diterima: "${finalUtterance}"`);
+                        ? `Received: "${finalUtterance}"`
+                        : `Kalimat diterima: "${finalUtterance}"`);
                     executeVoiceCommandRef.current?.(finalUtterance);
                 };
                 const effectiveQuery = hasWakeWord ? strippedAfterWake : latestTurnRaw;
@@ -4734,7 +4734,7 @@ export default function HeroApp({ portal }) {
             return;
         const out = registerFromRegForm();
         if (out.error) {
-            setRegSuccessMsg(`⚠ ${out.error}`);
+            setRegSuccessMsg(`${out.error}`);
             return;
         }
         const newAstro = { ...out.view, email: out.res.email };
@@ -5519,7 +5519,6 @@ export default function HeroApp({ portal }) {
                 React.createElement("div", { id: "hero-section-top", className: "max-w-[1280px] mx-auto hidden lg:flex flex-wrap items-end justify-between gap-4" }, contextControls),
                 authNotice && (React.createElement("div", { className: "p-3 rounded-[14px] bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center justify-between" },
                     React.createElement("span", null,
-                        "\u2713 ",
                         authNotice),
                     React.createElement("button", { onClick: () => setAuthNotice(''), className: "underline" }, isEn ? 'Dismiss' : 'Tutup'))),
                 syncError && (React.createElement("div", { role: "alert", className: "max-w-[1280px] mx-auto p-3 rounded-[14px] bg-rose-950/40 border border-rose-500/40 text-rose-300 text-sm flex items-center justify-between gap-3" },
@@ -6023,8 +6022,8 @@ export default function HeroApp({ portal }) {
                                         React.createElement("div", null,
                                             React.createElement("span", { className: "text-xs font-medium text-signal" }, approvedRx.lbnp
                                                 ? isEn
-                                                    ? '✓ Active Rx'
-                                                    : '✓ Aktif'
+                                                    ? 'Active Rx'
+                                                    : 'Aktif'
                                                 : isEn
                                                     ? 'Best Protocol'
                                                     : 'Protokol Utama')),
@@ -6037,7 +6036,7 @@ export default function HeroApp({ portal }) {
                                             ? 'border-emerald-500 ring-2 ring-emerald-500/20'
                                             : 'border-seam hover:border-stone-300'}` },
                                         React.createElement("div", null,
-                                            React.createElement("span", { className: "text-xs font-medium text-signal" }, approvedRx.env ? (isEn ? '✓ Active Rx' : '✓ Aktif') : 'ISS ECLSS')),
+                                            React.createElement("span", { className: "text-xs font-medium text-signal" }, approvedRx.env ? (isEn ? 'Active Rx' : 'Aktif') : 'ISS ECLSS')),
                                         React.createElement("div", { className: "my-3 flex items-center justify-center" },
                                             React.createElement("div", { className: "w-12 h-12 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700 font-mono text-xs font-medium" }, "CO\u2082")),
                                         React.createElement("div", null,
@@ -6047,7 +6046,7 @@ export default function HeroApp({ portal }) {
                                             ? 'border-emerald-500 ring-2 ring-emerald-500/20'
                                             : 'border-seam hover:border-stone-300'}` },
                                         React.createElement("div", null,
-                                            React.createElement("span", { className: "text-xs font-medium text-stone-600" }, approvedRx.bhp ? (isEn ? '✓ Active Rx' : '✓ Aktif') : 'BHP Vagal')),
+                                            React.createElement("span", { className: "text-xs font-medium text-stone-600" }, approvedRx.bhp ? (isEn ? 'Active Rx' : 'Aktif') : 'BHP Vagal')),
                                         React.createElement("div", { className: "my-3 flex items-center justify-center" },
                                             React.createElement("div", { className: "w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 font-mono text-xs font-medium" }, "HRV")),
                                         React.createElement("div", null,
@@ -6431,14 +6430,12 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                         jarvisSpeechText,
                         "\""),
                     liveHeardText && (React.createElement("div", { className: "text-xs font-mono text-emerald-700 pt-1" },
-                        "\uD83C\uDFA4 ",
                         isEn ? 'Heard' : 'Terdengar',
                         ": \"",
                         liveHeardText,
                         "\"")),
                     isAiSpeaking && (React.createElement("div", { className: "pt-1" },
                         React.createElement("button", { type: "button", onClick: () => interruptHeroAndListenForCorrection(''), className: "px-4 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium" },
-                            "\u270B ",
                             isEn ? 'Interrupt & Correct' : 'Potong Pembicaraan & Koreksi')))),
                 React.createElement("div", { className: "flex flex-wrap items-center justify-center gap-3" },
                     React.createElement("button", { type: "button", onClick: () => {
@@ -6537,7 +6534,6 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                             ? 'In hands-free mode, start with "Hi HERO", e.g. "Hi HERO, add astronaut". Click a command to try it.'
                             : 'Dalam mode hands-free, awali dengan "Hai HERO", contoh: "Hai HERO, tambahkan astronot". Klik perintah untuk mencobanya.')),
                     React.createElement("button", { type: "button", onClick: () => setShowCommandList(false), className: "px-3 py-1 rounded-full bg-panel border border-stone-200 text-stone-600 text-xs hover:bg-stone-50" },
-                        "\u2715 ",
                         isEn ? 'Close' : 'Tutup')),
                 (() => {
                     let counter = 0;
@@ -6565,7 +6561,7 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
             fuzzyIntentBadge && (React.createElement("div", { className: "text-stone-700 text-xs flex items-center gap-2" },
                 React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-signal" }),
                 fuzzyIntentBadge)),
-            voiceLangWarning && !isEn && (React.createElement("div", { className: "max-w-[260px] px-3 py-2 rounded-[14px] bg-amber-50 border border-amber-200 text-amber-800 text-xs leading-snug" }, "\u26A0 Suara Bahasa Indonesia belum terpasang di perangkat ini, jadi lafal bisa kurang tepat. Pasang paket suara \"Indonesia\" di pengaturan ucapan sistem, lalu muat ulang halaman.")),
+            voiceLangWarning && !isEn && (React.createElement("div", { className: "max-w-[260px] px-3 py-2 rounded-[14px] bg-amber-50 border border-amber-200 text-amber-800 text-xs leading-snug" }, "Suara Bahasa Indonesia belum terpasang di perangkat ini, jadi lafal bisa kurang tepat. Pasang paket suara \"Indonesia\" di pengaturan ucapan sistem, lalu muat ulang halaman.")),
             React.createElement("div", { className: "flex items-center gap-3 pl-2 pr-2 py-2 rounded-full bg-panel/90 border border-seam shadow-[0_12px_36px_rgba(0,0,0,0.55)]" },
                 React.createElement("button", { onClick: toggleHandsFreeWakeWord, className: `w-8 h-8 rounded-full flex items-center justify-center ${handsFreeEnabled && isMicListening
                         ? 'bg-signal text-ink'
@@ -6595,7 +6591,6 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                     isAiSpeaking && (React.createElement("button", { type: "button", onClick: () => interruptHeroAndListenForCorrection(''), className: "px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium", title: isEn
                             ? 'Say "Stop" / "Wrong" or click to interrupt & correct'
                             : 'Ucapkan "Stop" / "Bukan" atau klik untuk memotong & mengoreksi' },
-                        "\u270B ",
                         isEn ? 'Interrupt' : 'Potong & Koreksi')),
                     React.createElement("button", { onClick: () => {
                             stopAllHeroAudio();
@@ -6604,22 +6599,21 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                         }, className: "p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600" },
                         React.createElement(Minimize2, { className: "w-3.5 h-3.5" })))),
             fuzzyIntentBadge && (React.createElement("div", { className: "text-signal text-xs font-medium truncate" },
-                "\uD83C\uDFAF ",
                 fuzzyIntentBadge)),
-            voiceLangWarning && !isEn && (React.createElement("div", { className: "text-xs leading-snug px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800" }, "\u26A0 Suara Bahasa Indonesia belum terpasang di perangkat ini, jadi lafal bisa kurang tepat. Pasang paket suara \"Indonesia\" di pengaturan bahasa/ucapan sistem (Windows: Waktu & bahasa \u2192 Ucapan; macOS: Aksesibilitas \u2192 Konten Lisan), lalu muat ulang halaman.")),
+            voiceLangWarning && !isEn && (React.createElement("div", { className: "text-xs leading-snug px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800" }, "Suara Bahasa Indonesia belum terpasang di perangkat ini, jadi lafal bisa kurang tepat. Pasang paket suara \"Indonesia\" di pengaturan bahasa/ucapan sistem (Windows: Waktu & bahasa \u2192 Ucapan; macOS: Aksesibilitas \u2192 Konten Lisan), lalu muat ulang halaman.")),
             React.createElement("div", { className: "bg-well rounded-[14px] p-3 flex flex-col items-center" },
                 React.createElement("div", { className: "h-8 flex items-center justify-center gap-1 w-full" }, waveBars.map((h, i) => (React.createElement("div", { key: i, className: "w-1 rounded-full bg-signal duration-100", style: { height: `${isAiSpeaking || isMicListening || isSynthesizingVoice ? h : 20}%` } })))),
                 liveHeardText && (React.createElement("div", { className: "text-xs font-mono text-emerald-700 mt-1 text-center" },
-                    "\uD83C\uDFA4 \"",
+                    "\"",
                     liveHeardText,
                     "\"")),
                 isAiSpeaking && (React.createElement("div", { className: "text-xs text-rose-600 font-medium mt-1 text-center" }, isEn ? (React.createElement(React.Fragment, null,
-                    "\uD83D\uDCA1 Misunderstood? Say ",
+                    "Misunderstood? Say ",
                     React.createElement("strong", null, "\"Stop\""),
                     " / ",
                     React.createElement("strong", null, "\"No, I mean...\""),
                     " to interrupt")) : (React.createElement(React.Fragment, null,
-                    "\uD83D\uDCA1 Salah tangkap? Ucapkan ",
+                    "Salah tangkap? Ucapkan ",
                     React.createElement("strong", null, "\"Stop\""),
                     " / ",
                     React.createElement("strong", null, "\"Bukan, maksud saya...\""),
@@ -6634,7 +6628,6 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                         if (textNow)
                             executeVoiceCommand(textNow);
                     }, className: "mt-2 px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-medium" },
-                    "\u2713 ",
                     isEn ? 'Done Speaking (Process Now)' : 'Selesai Bicara (Proses Sekarang)'))),
             React.createElement("p", { className: "text-xs text-stone-700 leading-relaxed max-h-28 overflow-y-auto" }, jarvisSpeechText),
             React.createElement("form", { onSubmit: (e) => {
@@ -6649,7 +6642,6 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                 React.createElement("button", { type: "submit", className: "px-3 py-2 rounded-full bg-stone-900 text-ink text-xs font-medium" }, isEn ? 'Send' : 'Kirim')),
             React.createElement("div", { className: "flex flex-wrap gap-1 pt-1 border-t border-stone-100" },
                 React.createElement("button", { type: "button", onClick: () => setShowCommandList(true), className: "text-xs font-medium px-3 py-1 rounded-full bg-stone-900 text-ink" },
-                    "\uD83D\uDCCB ",
                     isEn ? 'Command List' : 'Daftar Perintah'),
                 React.createElement("button", { onClick: () => executeVoiceCommand(isEn ? 'Activate LBNP' : 'Aktifkan LBNP'), className: "text-xs font-medium px-3 py-1 rounded-full bg-emerald-100 text-emerald-900" },
                     "+ ",
