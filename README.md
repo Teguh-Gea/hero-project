@@ -1,13 +1,22 @@
 # HERO: admin portal and astronaut portal
 
-**Website: ** https://hero-project-seven.vercel.app/
+[![Live demo on Vercel](https://img.shields.io/badge/Live%20demo-hero--project--seven.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://hero-project-seven.vercel.app/)
+
+> ### Try it live: **[hero-project-seven.vercel.app](https://hero-project-seven.vercel.app/)**
+>
+> | Portal | Link | Demo sign-in |
+> |---|---|---|
+> | Admin | **[hero-project-seven.vercel.app/admin](https://hero-project-seven.vercel.app/admin)** | `teguh@hero.com` / `password123` |
+> | Astronaut | **[hero-project-seven.vercel.app/astronot](https://hero-project-seven.vercel.app/astronot)** | `raka@hero.com` / `password123` |
+>
+> More demo accounts are listed under [Demo accounts](#demo-accounts-simulation-data).
 
 HERO monitors each astronaut's eye health (SANS), mental health (BHP), and ISS cabin environment. The project is built with **Next.js (App Router)** and serves two separate portals from one server:
 
-| Portal | Address | For |
-|---|---|---|
-| Admin | `http://localhost:3000/admin` | Manages all data (also acts as flight surgeon) |
-| Astronaut | `http://localhost:3000/astronot` | Astronauts, including cabin leaders |
+| Portal | Live | Local | For |
+|---|---|---|---|
+| Admin | [/admin](https://hero-project-seven.vercel.app/admin) | `http://localhost:3000/admin` | Manages all data (also acts as flight surgeon) |
+| Astronaut | [/astronot](https://hero-project-seven.vercel.app/astronot) | `http://localhost:3000/astronot` | Astronauts, including cabin leaders |
 
 Access rights are enforced on the **server**, not just in the UI. Astronauts never receive data outside their rights, and every change sent to the server is checked again.
 
