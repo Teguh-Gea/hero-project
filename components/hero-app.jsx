@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Sparkles, Send, RefreshCw, CheckCircle2, Code2, Microscope, LogOut, Mic, Volume2, Minimize2, Radio, Play } from 'lucide-react';
 import { rfPredict } from '../lib/rf-models';
 import UsersPage from './users-page';
+import { detectHeroWakeWord, detectVoiceBargeIn, resolveSiteCommand, resolveFuzzyHeroIntent, buildCommandCatalog, HERO_COMMAND_GROUPS } from '../lib/voice-commands';
 import MissionsPage from './missions-page';
 import { passwordProblem, passwordMessage, PASSWORD_HINT, EMAIL_PATTERN } from '../lib/password-policy';
 // Logo HERO (versi terang untuk latar gelap) & tanda mata-planet
@@ -482,416 +483,25 @@ function toIndonesianSpeech(text) {
     t = t.replace(/\b([A-Za-z]{2,6}s?)\b/g, (w) => (ID_SPOKEN_ACRONYMS[w] ? ID_SPOKEN_ACRONYMS[w] : w));
     return t.replace(/[()[\]"“”]/g, ' ').replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/,(\s*,)+/g, ',').trim();
 }
+const HERO_ASSISTANT_NAME = 'HERO AI Assistant';
 const HERO_VOICE_MODELS = [
-    // Satu suara asisten HERO (pemilihan suara/dokter sudah dihapus)
+    // Satu suara asisten. Suara neural (Gemini TTS) disintesis di server lewat /api/tts jika GEMINI_API_KEY ada;
+    // tanpa itu dipakai suara perangkat yang paling natural. Tanpa efek pitch/EQ agar terdengar seperti manusia.
     {
-        id: 'Aoede',
-        geminiVoice: 'Aoede',
-        name: 'Dr. Clara (Aoede)',
+        id: 'hero',
+        name: HERO_ASSISTANT_NAME,
         gender: 'F',
-        age: 27,
-        badge: 'Perempuan 27 Thn • Dr. Clara (Hangat & Empatik)',
-        badgeEn: 'Female 27 Yrs • Dr. Clara (Warm & Empathetic)',
-        stylePrompt: 'Berbicaralah dalam Bahasa Indonesia dengan suara perempuan berusia 27 tahun yang sangat manusiawi, hangat, lembut, ramah, dan berempati seperti dokter pribadi',
-        stylePromptEn: 'Speak in English with a very human, warm, gentle, friendly, and empathetic 27-year-old female personal physician voice',
-        detuneCents: 15,
-        playbackRate: 1.02,
-        eqLowDb: 2.5,
-        eqPresenceDb: 2.0,
-        fallbackPitch: 1.12,
-        fallbackRate: 1.02,
+        detuneCents: 0,
+        playbackRate: 1.0,
+        eqLowDb: 0,
+        eqPresenceDb: 0,
+        fallbackPitch: 1.0,
+        fallbackRate: 0.98,
         voiceIndexOffset: 0,
-        sampleGreeting: 'Halo, saya Dokter Clara, usia 27 tahun. Saya siap mendampingi kesehatan retina dan mental Anda dengan suara yang hangat dan tenang.',
-        sampleGreetingEn: 'Hello, I am Doctor Clara, 27 years old. I am ready to support your retinal and mental health with a warm and calm voice.'
+        sampleGreeting: 'Halo, saya HERO AI Assistant. Saya siap membantu memantau kesehatan mata, kesehatan mental, dan lingkungan kabin Anda.',
+        sampleGreetingEn: 'Hi, I am HERO AI Assistant. I am here to help you monitor your eye health, mental health, and cabin environment.'
     }
 ];
-// Detektor Wake-Word "Hai HERO" / "Hi HERO" dengan Mode Ketat (Strict Anti-Noise) saat Minimize
-function detectHeroWakeWord(rawText, strictStandby = false) {
-    if (!rawText)
-        return { matched: false, stripped: '' };
-    const norm = rawText
-        .toLowerCase()
-        .replace(/[.,!?'"-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    // Saat mode Minimize/Standby, gunakan pola EKSPLISIT "Hai/Hi/Halo/Hey + Hero/Hiro"
-    // agar noise ruangan, desis napas, atau kata acak tidak pernah memicu AI secara tidak sengaja.
-    if (strictStandby) {
-        const strictWakeRegex = /\b(hi|hai|hey|hei|halo|hello)\s+(hero|hiro|herro)\b|\b(hihero|haihero|heyhero|halohero)\b/i;
-        const strictMatch = norm.match(strictWakeRegex);
-        if (strictMatch) {
-            const idx = norm.indexOf(strictMatch[0].toLowerCase());
-            const afterWake = norm.slice(idx + strictMatch[0].length).trim();
-            return { matched: true, stripped: afterWake };
-        }
-        return { matched: false, stripped: norm };
-    }
-    // Saat HUD sudah terbuka, izinkan variasi fonetik yang sedikit lebih fleksibel
-    const wakeRegex = /\b(hi|hai|hey|hei|halo|hello|hay)\s*(hero|hiro|heru|herro|hyro)\b|\b(hihero|haihero|heyhero|halohero|haihiro|hihiro)\b/i;
-    const match = norm.match(wakeRegex);
-    if (match) {
-        const idx = norm.indexOf(match[0].toLowerCase());
-        const afterWake = norm.slice(idx + match[0].length).trim();
-        return { matched: true, stripped: afterWake };
-    }
-    if (/^(hero|hiro)\b/i.test(norm)) {
-        const stripped = norm.replace(/^(hero|hiro)\b\s*/i, '').trim();
-        return { matched: true, stripped };
-    }
-    return { matched: false, stripped: norm };
-}
-// Detektor Interupsi / Barge-In (Bilingual ID & EN): Memungkinkan user memotong ucapan HERO
-function detectVoiceBargeIn(rawText) {
-    if (!rawText)
-        return { isBargeIn: false, correctionQuery: '' };
-    const norm = rawText
-        .toLowerCase()
-        .replace(/[.,!?'"-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    const bargeRx = /\b(stop|berhenti|bukan|salah|keliru|potong|koreksi|tunggu|sebentar|ulangi|ganti|batal|enggak|tidak|maksud saya|maksudku|bukan itu|eh salah|hai hero stop|hi hero stop|aktifkan|aktifin|nyalakan|nyalain|matikan|nonaktifkan|wait|hold on|wrong|no|incorrect|cancel|i mean|i meant|activate|enable|turn on|disable|turn off|deactivate)\b/i;
-    if (!bargeRx.test(norm)) {
-        return { isBargeIn: false, correctionQuery: '' };
-    }
-    if (/\b(aktifkan|aktifin|nyalakan|nyalain|matikan|nonaktifkan|activate|enable|turn on|disable|turn off|deactivate)\b/i.test(norm) &&
-        !/\b(stop|berhenti|bukan|salah|keliru|potong|koreksi|tunggu|sebentar|batal|wait|hold on|wrong|incorrect|cancel)\b/i.test(norm)) {
-        return { isBargeIn: true, correctionQuery: norm };
-    }
-    const correctionQuery = norm
-        .replace(/^.*?\b(hai|hi|halo|hey|hello)?\s*(hero|hiro)?\s*(stop|berhenti|tunggu|sebentar|potong|ulangi|batal|wait|hold on|cancel)\b[,.\s!]*/i, '')
-        .replace(/^.*?\b(eh\s+)?(bukan|salah|keliru|koreksi|enggak|tidak|wrong|no|incorrect)(\s+itu|\s+that)?[,.\s!]*(maksud\s+saya|maksudku|yang\s+saya\s+maksud|saya\s+minta|saya\s+ingin|saya\s+mau|tolong|i\s+mean|i\s+meant|please)?[,.\s!]*/i, '')
-        .replace(/^.*?\b(maksud\s+saya|maksudku|yang\s+saya\s+maksud|i\s+mean|i\s+meant)\b[,.\s!]*/i, '')
-        .trim();
-    return { isBargeIn: true, correctionQuery };
-}
-// ============================================================================
-// DAFTAR PERINTAH SUARA SPESIFIK WEBSITE (SPEECH & COMMAND CATALOG)
-// ============================================================================
-const HERO_COMMAND_CATALOG = [
-    { g: 'nav', id: 'Buka dashboard', en: 'Open dashboard', aid: 'Kembali ke dashboard utama dan menggulir ke bagian paling atas', aen: 'Returns to the main dashboard and scrolls to the top' },
-    { g: 'nav', id: 'Buka simulasi input', en: 'Open input simulator', aid: 'Membuka halaman Simulasi Input untuk astronot yang sedang aktif', aen: 'Opens the Input Simulator for the active astronaut' },
-    { g: 'nav', id: 'Buka registrasi', en: 'Open registration', aid: 'Membuka halaman Registrasi Akun & Profil Kru', aen: 'Opens the Crew Account & Profile Registration page' },
-    { g: 'nav', id: 'Buka database SQL', en: 'Open SQL database', aid: 'Membuka halaman Arsitektur Riset NASA & Skema SQL', aen: 'Opens the NASA Research Architecture & SQL Schema page' },
-    { g: 'nav', id: 'Daftar perintah', en: 'Show command list', aid: 'Menampilkan daftar perintah suara ini', aen: 'Shows this voice command list' },
-    { g: 'astro', id: 'Tambahkan astronot', en: 'Add astronaut', aid: 'Membuka Simulasi Input dalam mode tambah astronot baru (isi profil + data pertama)', aen: 'Opens the Input Simulator in add-new-astronaut mode (profile + first record)' },
-    { g: 'astro', id: 'Tambah data pemeriksaan', en: 'Add new scan', aid: 'Membuka Simulasi Input untuk menambah data hari baru (D+terakhir+30) bagi astronot aktif', aen: 'Opens the Input Simulator to add a new day (last D+30) for the active astronaut' },
-    { g: 'astro', id: 'Ubah data astronot', en: 'Edit astronaut data', aid: 'Membuka Simulasi Input dan memuat data hari yang sedang dilihat agar bisa diubah', aen: 'Opens the Input Simulator with the currently viewed day loaded for editing' },
-    { g: 'astro', id: 'Pilih astronot Raka', en: 'Select astronaut Raka', aid: 'Mengganti astronot aktif berdasarkan nama atau ID (mis. "astronot 0101")', aen: 'Switches the active astronaut by name or ID (e.g. "astronaut 0101")' },
-    { g: 'astro', id: 'Astronot berikutnya', en: 'Next astronaut', aid: 'Pindah ke astronot berikutnya di daftar', aen: 'Moves to the next astronaut in the list' },
-    { g: 'astro', id: 'Astronot sebelumnya', en: 'Previous astronaut', aid: 'Pindah ke astronot sebelumnya di daftar', aen: 'Moves to the previous astronaut in the list' },
-    { g: 'astro', id: 'Tampilkan misi INC-071', en: 'Show mission INC-071', aid: 'Memfilter kru berdasarkan misi dan memilih astronot pertamanya', aen: 'Filters the crew by mission and selects its first astronaut' },
-    { g: 'astro', id: 'Tampilkan semua misi', en: 'Show all missions', aid: 'Menghapus filter misi (semua kru tampil)', aen: 'Clears the mission filter (all crew shown)' },
-    { g: 'time', id: 'Hari ke 92', en: 'Day 92', aid: 'Melompat ke hari misi D+92 pada timeline', aen: 'Jumps to mission day D+92 on the timeline' },
-    { g: 'time', id: 'Scan berikutnya', en: 'Next scan', aid: 'Pindah ke data pemeriksaan berikutnya', aen: 'Moves to the next examination record' },
-    { g: 'time', id: 'Scan sebelumnya', en: 'Previous scan', aid: 'Pindah ke data pemeriksaan sebelumnya', aen: 'Moves to the previous examination record' },
-    { g: 'time', id: 'Data terbaru', en: 'Latest scan', aid: 'Menampilkan data pemeriksaan paling akhir', aen: 'Shows the most recent examination record' },
-    { g: 'time', id: 'Data pertama', en: 'First scan', aid: 'Menampilkan data pemeriksaan paling awal', aen: 'Shows the earliest examination record' },
-    { g: 'view', id: 'Tampilkan skor', en: 'Show scores', aid: 'Menyorot kartu skor SANS, BHP, Lingkungan ISS & Readiness', aen: 'Highlights the SANS, BHP, ISS Environment & Readiness score cards' },
-    { g: 'view', id: 'Tampilkan data OCT', en: 'Show OCT data', aid: 'Menampilkan 7 variabel inti OCT mata (SANS)', aen: 'Shows the 7 core ocular OCT variables (SANS)' },
-    { g: 'view', id: 'Tampilkan data mental', en: 'Show mental data', aid: 'Menampilkan 7 variabel kesehatan mental & kognitif (BHP)', aen: 'Shows the 7 mental & cognitive health variables (BHP)' },
-    { g: 'view', id: 'Tampilkan data lingkungan', en: 'Show environment data', aid: 'Menampilkan 7 variabel lingkungan kabin ISS (ECLSS)', aen: 'Shows the 7 ISS cabin environment variables (ECLSS)' },
-    { g: 'view', id: 'Tampilkan semua biomarker', en: 'Show all biomarkers', aid: 'Menggulir ke 21 kartu biomarker Tri-Modal', aen: 'Scrolls to the 21 Tri-Modal biomarker cards' },
-    { g: 'view', id: 'Tampilkan kembar digital', en: 'Show digital twin', aid: 'Membuka Kembar Digital Mata 3D (fundus & sagital)', aen: 'Opens the 3D Ocular Digital Twin (fundus & sagittal)' },
-    { g: 'view', id: 'Tampilkan rekomendasi', en: 'Show recommendations', aid: 'Menggulir ke panel protokol mitigasi & countermeasures', aen: 'Scrolls to the mitigation & countermeasure protocols panel' },
-    { g: 'rx', id: 'Aktifkan LBNP', en: 'Activate LBNP', aid: 'Menyetujui Protokol Chibis LBNP (-35 mmHg); "Matikan LBNP" untuk membatalkan', aen: 'Approves the Chibis LBNP Protocol (-35 mmHg); "Deactivate LBNP" to cancel' },
-    { g: 'rx', id: 'Aktifkan protokol CO2', en: 'Activate CO2 protocol', aid: 'Menyetujui Protokol CO₂ (scrubber CDRA & restriksi natrium)', aen: 'Approves the CO₂ Protocol (CDRA scrubber & sodium restriction)' },
-    { g: 'rx', id: 'Aktifkan protokol HRV', en: 'Activate HRV protocol', aid: 'Menyetujui Protokol HRV (biofeedback vagal 0,1 Hz)', aen: 'Approves the HRV Protocol (0.1 Hz vagal biofeedback)' },
-    { g: 'rx', id: 'Aktifkan semua protokol', en: 'Activate all protocols', aid: 'Menyetujui LBNP, CO₂ dan HRV sekaligus', aen: 'Approves LBNP, CO₂ and HRV at once' },
-    { g: 'rx', id: 'Matikan semua protokol', en: 'Deactivate all protocols', aid: 'Membatalkan semua protokol intervensi', aen: 'Cancels all intervention protocols' },
-    { g: 'ask', id: 'Jelaskan data OCT saya', en: 'Explain my OCT data', aid: 'HERO menjelaskan 7 variabel OCT secara lisan', aen: 'HERO explains the 7 OCT variables aloud' },
-    { g: 'ask', id: 'Bagaimana kondisi mental saya?', en: 'How is my mental health?', aid: 'HERO menganalisis 7 variabel BHP secara lisan', aen: 'HERO analyses the 7 BHP variables aloud' },
-    { g: 'ask', id: 'Jelaskan lingkungan kabin', en: 'Explain the cabin environment', aid: 'HERO menjelaskan 7 variabel lingkungan ISS', aen: 'HERO explains the 7 ISS environment variables' },
-    { g: 'ask', id: 'Apakah saya siap EVA?', en: 'Am I ready for EVA?', aid: 'HERO menilai kesiapan spacewalk (EVA)', aen: 'HERO assesses spacewalk (EVA) readiness' },
-    { g: 'ask', id: 'Apa rekomendasi untuk saya?', en: 'What are the recommendations?', aid: 'HERO membacakan saran intervensi harian', aen: 'HERO reads the daily intervention advice' },
-    { g: 'sys', id: 'Ganti bahasa Inggris', en: 'Switch to Indonesian', aid: 'Mengganti bahasa tampilan & suara HERO', aen: 'Switches the display & HERO voice language' },
-    { g: 'sys', id: 'Stop', en: 'Stop', aid: 'Memotong ucapan HERO; lanjutkan dengan "Bukan, maksud saya …" untuk koreksi', aen: 'Interrupts HERO; follow with "No, I mean …" to correct' },
-    { g: 'sys', id: 'Tutup', en: 'Minimize', aid: 'Mengecilkan panel suara HERO ke mode siaga', aen: 'Minimizes the HERO voice panel to standby' },
-    { g: 'sys', id: 'Matikan mikrofon', en: 'Turn off microphone', aid: 'Menonaktifkan pendengaran "Hai HERO" (hands-free)', aen: 'Disables "Hi HERO" hands-free listening' },
-    { g: 'sys', id: 'Keluar akun', en: 'Log out', aid: 'Keluar dari akun (logout SSO)', aen: 'Signs out of the account (SSO logout)' }
-];
-const HERO_COMMAND_GROUPS = [
-    { key: 'nav', id: 'Navigasi Halaman', en: 'Page Navigation' },
-    { key: 'astro', id: 'Data Astronot', en: 'Astronaut Data' },
-    { key: 'time', id: 'Timeline Pemeriksaan', en: 'Examination Timeline' },
-    { key: 'view', id: 'Tampilan Dashboard', en: 'Dashboard Views' },
-    { key: 'rx', id: 'Protokol Intervensi', en: 'Intervention Protocols' },
-    { key: 'ask', id: 'Tanya & Analisis HERO', en: 'Ask HERO & Analysis' },
-    { key: 'sys', id: 'Suara & Sistem', en: 'Voice & System' }
-];
-const ASTRO_NAME_TITLES = new Set(['cmdr', 'dr', 'spec', 'capt', 'lt', 'eng', 'mr', 'mrs', 'ms', 'prof', 'mission', 'specialist']);
-// Pengenal perintah spesifik website (dijalankan sebelum mesin fuzzy biomarker)
-function resolveSiteCommand(rawInput, astronauts, voiceModels) {
-    const norm = (rawInput || '')
-        .toLowerCase()
-        .replace(/[.,!?'"–—-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!norm)
-        return null;
-    const has = (re) => re.test(norm);
-    const asks = has(/\b(jelaskan|bacakan|berapa|kenapa|mengapa|bagaimana|gimana|apa|apakah|analisis|explain|read|why|how|what|analyze)\b/);
-    if (has(/\b(daftar|list|lihat|tampilkan|show|buka|open)\s*(semua\s*|all\s*)?(perintah|command|commands|komando)\b|\b(bantuan|help|what can i say)\b|\bperintah apa( saja)?\b/)) {
-        return { type: 'help' };
-    }
-    if (has(/\b(log\s*out|logout|sign\s*out|keluar\s*(dari\s*)?(akun|aplikasi|sistem|sso))\b/)) {
-        return { type: 'logout' };
-    }
-    if (has(/\b(matikan|nonaktifkan|non aktifkan|disable|turn\s*off|stop)\s*(mikrofon|microphone|mic|mik|wake\s*word|hai hero|hi hero)\b/)) {
-        return { type: 'mic_off' };
-    }
-    if (has(/\b(bahasa|language)\s*(ke\s*)?(inggris|english)\b|\b(switch|change)\s*(language\s*)?(to\s*)?english\b|\bspeak english\b/)) {
-        return { type: 'lang', lang: 'en' };
-    }
-    if (has(/\b(bahasa|language)\s*(ke\s*)?(indonesia|indonesian)\b|\b(switch|change)\s*(language\s*)?(to\s*)?(indonesia|indonesian)\b|\bspeak indonesian\b/)) {
-        return { type: 'lang', lang: 'id' };
-    }
-    if (has(/\b(tambah|tambahkan|tambahin|buat|bikin|daftarkan|input|masukkan)\s*(sebuah\s*|seorang\s*)?(astronot|astronaut|kru|crew|anggota kru)\b|\b(astronot|astronaut|kru|crew)\s*baru\b|\badd\s*(a\s*|an\s*)?(new\s*)?(astronaut|crew)\b|\bnew\s*(astronaut|crew member)\b/)) {
-        return { type: 'sim', mode: 'new_astro' };
-    }
-    if (has(/\b(tambah|tambahkan|tambahin|input|masukkan|masukin|catat|rekam)\s*(data|hasil|pemeriksaan|scan|telemetri)\b|\b(data|pemeriksaan|scan)\s*baru\b|\badd\s*(a\s*)?(new\s*)?(data|scan|record|examination)\b|\bnew\s*(scan|record|examination)\b/)) {
-        return { type: 'sim', mode: 'new_scan' };
-    }
-    if (has(/\b(ubah|edit|koreksi|perbarui|update|revisi|sunting)\b/) && has(/\b(data|profil|profile|nilai|record|astronot|astronaut)\b/)) {
-        return { type: 'sim', mode: 'edit' };
-    }
-    if (has(/\b(buka|open|masuk ke|go to)\s*(halaman\s*)?(simulasi|simulator|input)\b|\b(input simulator|simulasi input)\b/)) {
-        return { type: 'sim', mode: 'open' };
-    }
-    if (has(/\b(buka|kembali\s*ke|ke|open|go\s*to|back\s*to)\s*(halaman\s*)?(dashboard|beranda|halaman utama|home)\b|^(dashboard|beranda|home)$/)) {
-        return { type: 'dashboard' };
-    }
-    if (has(/\b(semua|all)\s*(misi|missions?)\b|\b(hapus|reset|clear)\s*filter\b/)) {
-        return { type: 'mission', inc: 'ALL' };
-    }
-    const missionMatch = norm.match(/\b(?:misi|mission|inc)\s*(?:inc\s*)?0*(\d{1,4})\b/);
-    if (missionMatch) {
-        const n = Number(missionMatch[1]);
-        const inc = Array.from(new Set(astronauts.map((a) => a.inc))).find((i) => Number(String(i).replace(/\D/g, '')) === n);
-        if (inc)
-            return { type: 'mission', inc };
-    }
-    if (has(/\b(astronot|astronaut|kru|crew)\s*(berikutnya|selanjutnya|lainnya|next)\b|\bnext\s*(astronaut|crew)\b/)) {
-        return { type: 'astro_step', dir: 1 };
-    }
-    if (has(/\b(astronot|astronaut|kru|crew)\s*(sebelumnya|previous|prev)\b|\bprevious\s*(astronaut|crew)\b/)) {
-        return { type: 'astro_step', dir: -1 };
-    }
-    const dayMatch = norm.match(/\b(?:hari|day|d)\s*(?:ke\s*)?\+?\s*(\d{1,4})\b/);
-    const day = dayMatch ? Number(dayMatch[1]) : null;
-    const idMatch = norm.match(/\b(?:ast|astronot|astronaut|id)\s*0*(\d{1,4})\b/);
-    let picked = null;
-    if (idMatch) {
-        const n = Number(idMatch[1]);
-        picked = astronauts.find((a) => Number(String(a.id).replace(/\D/g, '')) === n) || null;
-    }
-    if (!picked) {
-        picked =
-            astronauts.find((a) => {
-                const tokens = String(a.name || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/)
-                    .filter((t) => t.length >= 3 && !ASTRO_NAME_TITLES.has(t));
-                return tokens.some((t) => new RegExp(`\\b${t}\\b`).test(norm));
-            }) || null;
-    }
-    if (picked && !asks)
-        return { type: 'select_astro', astroId: picked.id, day };
-    if (has(/\b(scan|data|pemeriksaan|hari)\s*(berikutnya|selanjutnya)\b|\bnext\s*(scan|day|record)\b/))
-        return { type: 'scan_step', dir: 1 };
-    if (has(/\b(scan|data|pemeriksaan|hari)\s*(sebelumnya)\b|\b(previous|prev)\s*(scan|day|record)\b/))
-        return { type: 'scan_step', dir: -1 };
-    if (has(/\b(scan|data|pemeriksaan)\s*(terakhir|terbaru)\b|\b(latest|last|newest)\s*(scan|data|record)\b/))
-        return { type: 'scan_edge', edge: 'last' };
-    if (has(/\b(scan|data|pemeriksaan)\s*(pertama|awal|terlama)\b|\b(first|earliest|oldest)\s*(scan|data|record)\b/))
-        return { type: 'scan_edge', edge: 'first' };
-    if (day !== null && !asks)
-        return { type: 'day', day };
-    const wantsToggle = has(/\b(aktifkan|aktifin|nyalakan|matikan|nonaktifkan|activate|deactivate|enable|disable|turn on|turn off)\b/);
-    if (!asks && !wantsToggle) {
-        if (has(/\b(skor|score|scores|readiness|kesiapan)\b/))
-            return { type: 'section', section: 'scores', category: 'all' };
-        if (has(/\b(biomarker|biomarkers|21 variabel|21 variables)\b/))
-            return { type: 'section', section: 'biomarkers', category: 'all' };
-        if (has(/\b(rekomendasi|recommendations?|countermeasures?|mitigasi|mitigation)\b/))
-            return { type: 'section', section: 'countermeasures', category: 'copilot' };
-    }
-    return null;
-}
-// Mesin Fuzzy Intent & Toleransi Typo (Bilingual ID & EN)
-function resolveFuzzyHeroIntent(rawInput, lang = 'id') {
-    const isEn = lang === 'en';
-    const norm = (rawInput || '')
-        .toLowerCase()
-        .replace(/[.,!?'"-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    const mentionsCo2Rx = /\b(co2|co\s*2|c\s*o\s*2|c\s*o\s*dua|co\s*dua|ceo\s*2|ceo\s*dua|se\s*o\s*2|se\s*o\s*dua|c02|so2|so\s*2|karbon|karbondioksida|carbon|cdra|c\s*d\s*r\s*a|scrubber|skraber|natrium|sodium|garam|eclss|e\s*c\s*l\s*s\s*s)\b/i.test(norm);
-    const mentionsHrvRx = /\b(hrv|h\s*r\s*v|ha\s*er\s*ve|ha\s*er\s*fe|h\s*r\s*f|hrf|harv|hrp|h\s*r\s*p|earv|vagal|fagal|pagal|biofeedback|bio\s*feedback|napas|nafas|pernapasan|pernafasan|breathing|detak\s*jantung|jantung|heart\s*rate|sla|s\s*l\s*a)\b/i.test(norm);
-    const mentionsLbnpRx = /\b(lbnp|l\s*b\s*n\s*p|el\s*be\s*en\s*pe|lbmp|lmbp|lnbp|ldnp|ebnp|elbmp|lbn|l\s*b\s*n|rbp|abnp|chibis|cibis|kibis|sibis|hibis|vakum|vacuum)\b/i.test(norm);
-    const fixed = norm
-        .replace(/\b(el\s*be\s*en\s*pe|l\s*b\s*n\s*p|lbmp|lmbp|lnbp|ldnp|ebnp|elbmp|lbn|chibis|cibis|kibis|sibis|hibis|vakum|vacuum)\b/g, 'lbnp')
-        .replace(/\b(co2|co\s*2|c\s*o\s*2|c\s*o\s*dua|co\s*dua|ceo\s*2|ceo\s*dua|se\s*o\s*2|se\s*o\s*dua|c02|so2|so\s*2|karbon|karbondioksida|carbon|cdra|scrubber|skraber)\b/g, 'co2_rx')
-        .replace(/\b(hrv|h\s*r\s*v|ha\s*er\s*ve|ha\s*er\s*fe|h\s*r\s*f|hrf|harv|hrp|h\s*r\s*p|earv|vagal|fagal|pagal|biofeedback)\b/g, 'hrv_rx')
-        .replace(/\b(o\s*c\s*t|okt|ositi|osit|oct2|mataku|optik|optic|ocular|eye|eyes|rnfl|gcipl|vcdr|cst|koroid|choroid|retina|retinal|sans)\b/g, 'oct')
-        .replace(/\b(b\s*h\s*p|mntal|mental|psikolog|psikis|stres|stress|tidur|sleep|sws|pvt|wajah|facial|facs|eda|kognitif|cognitive|fatigue|burnout)\b/g, 'bhp')
-        .replace(/\b(i\s*s\s*s|e\s*c\s*l\s*s\s*s|ess|eclss|lingkungan|kabin|cabin|environment|radiasi|radiation|bising|noise|voc|udara|air|suhu|temperature|lembap|humidity|sirkadian|circadian|lux|wrs|natrium|sodium|garam)\b/g, 'env')
-        .replace(/\b(kembar|digital\s*twin|3d|fundus|sagital|sagittal|peta\s*mata|bola\s*mata)\b/g, 'twin')
-        .replace(/\b(dta|dt|datanya|rekam|medis|biomarker|biomarkers|variabel|variables|kondisi|condition|status|hasil|results|cek|check|lihat|show|view|tunjuk|tampil|display)\b/g, 'data')
-        .replace(/\b(aktif|aktifkan|aktif\s*kan|mengaktifkan|aktifin|aktikan|aktifan|nyalakan|nyalain|nyala|menyalakan|jalankan|jalanin|terapkan|terapin|pakai|gunakan|pasang|mulai|hidupkan|hidupin|klik|pencet|activate|enable|turn\s*on|start|apply|run)\b/g, 'activate')
-        .replace(/\b(matikan|nonaktifkan|non\s*aktifkan|nonaktif|lepas|batalkan|hentikan|deactivate|disable|turn\s*off|stop\s*protocol)\b/g, 'deactivate');
-    const isQuestionAboutData = /\b(jelaskan|bacakan|berapa|apa\s*itu|kenapa|mengapa|explain|read|what\s*is|why|how\s*is)\b/i.test(norm);
-    const wantsActivate = /\b(activate)\b/i.test(fixed) ||
-        /\b(ingin|mau|tolong|coba|please|want\s*to)\s+(mengaktifkan|aktif|nyala|jalan|terap|pasang|activate|enable|turn\s*on)/i.test(norm) ||
-        (!isQuestionAboutData &&
-            /\b(protokol|protocol|intervensi|intervention|countermeasure|terapi|therapy)\s*(co2|co\s*2|hrv|h\s*r\s*v|lbnp|chibis|vagal|cdra)\b/i.test(norm));
-    const wantsDeactivate = /\b(deactivate)\b/i.test(fixed);
-    if (wantsActivate || wantsDeactivate) {
-        const targetState = !wantsDeactivate;
-        if (/\b(semua|ketiga|tiga|all|both|everything)\b/i.test(norm) || (mentionsCo2Rx && mentionsHrvRx && mentionsLbnpRx)) {
-            return {
-                type: 'toggle_rx',
-                rxKey: 'all',
-                targetState,
-                label: isEn
-                    ? 'All Intervention Protocols (LBNP, CO₂, and HRV)'
-                    : 'Semua Protokol Intervensi (LBNP, CO₂, dan HRV)'
-            };
-        }
-        if (mentionsCo2Rx && mentionsHrvRx) {
-            return {
-                type: 'toggle_rx',
-                rxKey: 'co2_hrv',
-                targetState,
-                label: isEn
-                    ? 'CO₂ Protocol (ISS ECLSS) & HRV Protocol (BHP Vagal)'
-                    : 'Protokol CO₂ (ISS ECLSS) & Protokol HRV (BHP Vagal)'
-            };
-        }
-        if (mentionsCo2Rx || /\b(co2_rx|env)\b/i.test(fixed)) {
-            return {
-                type: 'toggle_rx',
-                rxKey: 'env',
-                targetState,
-                label: isEn
-                    ? 'CO₂ Protocol (CDRA Scrubber ≤2 mmHg & Low Sodium)'
-                    : 'Protokol CO₂ (CDRA Scrubber ≤2 mmHg & Restriksi Natrium)'
-            };
-        }
-        if (mentionsHrvRx || (/\b(hrv_rx|bhp)\b/i.test(fixed) && !mentionsLbnpRx)) {
-            return {
-                type: 'toggle_rx',
-                rxKey: 'bhp',
-                targetState,
-                label: isEn
-                    ? 'HRV Protocol (0.1 Hz Vagal Biofeedback & SLA Circadian)'
-                    : 'Protokol HRV (Biofeedback Vagal 0.1 Hz & Sirkadian SLA)'
-            };
-        }
-        return {
-            type: 'toggle_rx',
-            rxKey: 'lbnp',
-            targetState,
-            label: isEn
-                ? 'Chibis LBNP Protocol (-35 mmHg)'
-                : 'Protokol Chibis LBNP (-35 mmHg)'
-        };
-    }
-    if (/\b(simulasi|simulation|simulator|input|masukin|upload|tambah\s*data|add\s*data)\b/i.test(norm)) {
-        return {
-            type: 'nav_tab',
-            tab: 'input',
-            label: isEn ? 'Tri-Modal Data Input Simulator' : 'Simulasi Input Data Tri-Modal'
-        };
-    }
-    if (/\b(registrasi|register|registration|daftar\s*kru|tambah\s*kru|user\s*baru|new\s*crew)\b/i.test(norm)) {
-        return {
-            type: 'nav_tab',
-            tab: 'register',
-            label: isEn ? 'Astronaut Crew Registration' : 'Registrasi Kru Astronot'
-        };
-    }
-    if (/\b(sql|database|skema|schema|osdr|riset\s*nasa|nasa\s*research)\b/i.test(norm)) {
-        return {
-            type: 'nav_tab',
-            tab: 'sql',
-            label: isEn ? 'NASA Research Architecture & SQL Schema' : 'Arsitektur Riset NASA & Database SQL'
-        };
-    }
-    if (/\b(data\s*diri|profil|profile|identitas|ke\s*atas|bagian\s*atas|halaman\s*atas|ringkasan\s*utama|dashboard\s*utama|main\s*dashboard|top\s*section|overview)\b/i.test(norm)) {
-        return {
-            type: 'show_data',
-            category: 'all',
-            section: 'top',
-            label: isEn ? 'Astronaut Profile & Main Summary' : 'Data Diri & Ringkasan Utama Astronot'
-        };
-    }
-    const hasOct = /\b(oct)\b/i.test(fixed);
-    const hasBhp = /\b(bhp|hrv_rx)\b/i.test(fixed);
-    const hasEnv = /\b(env|co2_rx)\b/i.test(fixed);
-    const hasTwin = /\b(twin)\b/i.test(fixed);
-    if (hasTwin) {
-        return {
-            type: 'show_data',
-            category: 'twin',
-            section: 'twin',
-            label: isEn
-                ? '3D Ocular Digital Twin (12-Clock Fundus & Sagittal)'
-                : 'Kembar Digital Mata 3D (Fundus 12-Jam & Sagital)'
-        };
-    }
-    if ((hasOct && hasBhp) || (hasOct && hasEnv) || (hasBhp && hasEnv) || /\b(semua|all|21|lengkap|full|tri\s*modal|ketiga|tujuh\s*data|7\s*data)\b/i.test(norm)) {
-        return {
-            type: 'show_data',
-            category: 'all',
-            section: 'top',
-            label: isEn
-                ? 'Full Profile & All 21 Tri-Modal Biomarkers'
-                : 'Semua Data Diri & 21 Biomarker Tri-Modal'
-        };
-    }
-    if (hasOct) {
-        return {
-            type: 'show_data',
-            category: 'oct7',
-            section: 'biomarkers',
-            label: isEn ? '7 Core Ocular OCT Variables (SANS)' : '7 Variabel Inti Ocular OCT (SANS)'
-        };
-    }
-    if (hasBhp) {
-        return {
-            type: 'show_data',
-            category: 'bhp7',
-            section: 'biomarkers',
-            label: isEn
-                ? '7 Mental & Cognitive Health Variables (BHP)'
-                : '7 Variabel Kesehatan Mental & Kognitif (BHP)'
-        };
-    }
-    if (hasEnv) {
-        return {
-            type: 'show_data',
-            category: 'env7',
-            section: 'biomarkers',
-            label: isEn
-                ? '7 ISS Cabin Environment Variables (ECLSS)'
-                : '7 Variabel Lingkungan Kabin ISS (ECLSS)'
-        };
-    }
-    if (/\b(saran|rekomendasi|recommendation|advice|terapi|therapy|mitigasi|mitigation|protokol|protocol|intervensi|solusi|obat|countermeasure|countermeasures)\b/i.test(norm)) {
-        return {
-            type: 'show_data',
-            category: 'copilot',
-            section: 'countermeasures',
-            label: isEn
-                ? 'Recommended Mitigation & Countermeasure Protocols'
-                : 'Rekomendasi Protokol Mitigasi & Countermeasures'
-        };
-    }
-    return {
-        type: 'show_data',
-        category: 'all',
-        section: 'top',
-        label: isEn ? 'Astronaut Profile & Health Dashboard' : 'Data Diri & Dashboard Utama Kesehatan'
-    };
-}
 function base64ToArrayBuffer(base64) {
     const binaryString = window.atob(base64);
     const len = binaryString.length;
@@ -3046,9 +2656,23 @@ export default function HeroApp({ portal }) {
     const [assignmentPref, setAssignmentPref] = useState({});
     const [rxNotice, setRxNotice] = useState('');
     // --- INTERNATIONALIZATION / LANGUAGE STATE ('id' | 'en') ---
-    const [lang, setLang] = useState('id');
+    // Bahasa bawaan: Inggris. Pilihan pengguna diingat di browser (hero_lang).
+    const [lang, setLang] = useState(() => {
+        try {
+            return window.localStorage.getItem('hero_lang') === 'id' ? 'id' : 'en';
+        }
+        catch {
+            return 'en';
+        }
+    });
     const isEn = lang === 'en';
-    const langRef = useRef('id');
+    const langRef = useRef(lang);
+    useEffect(() => {
+        try {
+            window.localStorage.setItem('hero_lang', lang);
+        }
+        catch { }
+    }, [lang]);
     // --- AUTHENTICATION GATE STATE (LOGIN & REGISTER BEFORE ENTERING APP) ---
     const [authUser, setAuthUser] = useState(null);
     const [loginInput, setLoginInput] = useState('');
@@ -3086,8 +2710,8 @@ export default function HeroApp({ portal }) {
     const [liveHeardText, setLiveHeardText] = useState('');
     const [micErrorMsg, setMicErrorMsg] = useState('');
     const [ttsEnabled, setTtsEnabled] = useState(true);
-    const [selectedVoiceModelId, setSelectedVoiceModelId] = useState('Aoede');
-    const [voiceEngineBadge, setVoiceEngineBadge] = useState('Gemini Neural Voice (25-30 Thn)');
+    const [selectedVoiceModelId, setSelectedVoiceModelId] = useState('hero');
+    const [voiceEngineBadge, setVoiceEngineBadge] = useState(HERO_ASSISTANT_NAME);
     const [voiceLangWarning, setVoiceLangWarning] = useState(false);
     const [isSynthesizingVoice, setIsSynthesizingVoice] = useState(false);
     const [lastVoiceCommand, setLastVoiceCommand] = useState('');
@@ -3116,11 +2740,13 @@ export default function HeroApp({ portal }) {
     const ttsAudioCtxRef = useRef(null);
     const activeBufferSourceRef = useRef(null);
     const speechReqIdRef = useRef(0);
-    const selectedVoiceModelRef = useRef('Aoede');
+    const selectedVoiceModelRef = useRef('hero');
     const currentSpokenTextRef = useRef('');
     const recentAiSpeechHistoryRef = useRef([]);
     // Refs for Hands-Free Continuous Wake-Word Engine ("Hi HERO" without clicking)
     const recognitionRef = useRef(null);
+    // Satu jadwal mulai-ulang saja, supaya onend dan pengecek berkala tidak membuat dua instance yang saling memutus
+    const recognitionRestartTimerRef = useRef(null);
     const isRecognitionActiveRef = useRef(false);
     const isMicLockedByTtsRef = useRef(false);
     const handsFreeEnabledRef = useRef(true);
@@ -3140,6 +2766,7 @@ export default function HeroApp({ portal }) {
     const lastProcessedTranscriptRef = useRef('');
     const sentenceQueueTimerRef = useRef(null);
     const standbyIgnoreUntilRef = useRef(0);
+    const neuralTtsStatusRef = useRef('unknown'); // 'unknown' | 'on' | 'off' (server tanpa GEMINI_API_KEY)
     const neuralAudioCacheRef = useRef(new Map());
     const inflightNeuralFetchRef = useRef(new Map());
     // --- TAB 2 STATE: SIMULASI INPUT DATA (7 OCT + 7 BHP + 7 ISS ENV) ---
@@ -3187,6 +2814,8 @@ export default function HeroApp({ portal }) {
     }, [isSurgeonUser, activeMainTab]);
     const isAdminUser = isSurgeonUser;
     const astronauts = useMemo(() => buildAstronautViews(db, { eye: selectedEye, assignmentPref, missionFilter, account: authAccount }), [db, selectedEye, assignmentPref, missionFilter, authAccount]);
+    // Daftar perintah sesuai role & data yang terlihat (lib/voice-commands.js)
+    const commandCatalog = useMemo(() => buildCommandCatalog({ isAdmin: isSurgeonUser, astronauts, missions: db.missions.map((m) => m.id) }), [isSurgeonUser, astronauts, db.missions]);
     const availableMissions = useMemo(() => {
         const vis = new Set(astronauts.map((a) => a.id));
         const set = new Set();
@@ -3638,41 +3267,26 @@ export default function HeroApp({ portal }) {
         if (inflightNeuralFetchRef.current.has(cacheKey)) {
             return inflightNeuralFetchRef.current.get(cacheKey);
         }
-        const styleInstruction = targetLang === 'en' && modelObj.stylePromptEn ? modelObj.stylePromptEn : modelObj.stylePrompt;
+        // Suara neural hanya jika server mengaktifkannya (GEMINI_API_KEY); setelah 501 tidak dicoba lagi
+        if (neuralTtsStatusRef.current === 'off' || !authUserRef.current)
+            return null;
         const fetchPromise = (async () => {
             try {
-                const apiKey = '';
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-                const payload = {
-                    contents: [
-                        {
-                            parts: [
-                                {
-                                    text: `${styleInstruction}: "${cleanChunk}"`
-                                }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        responseModalities: ['AUDIO'],
-                        speechConfig: {
-                            voiceConfig: {
-                                prebuiltVoiceConfig: {
-                                    voiceName: modelObj.geminiVoice
-                                }
-                            }
-                        }
-                    }
-                };
-                const response = await fetch(apiUrl, {
+                const response = await fetch('/api/tts', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-HERO-Request': '1' },
+                    body: JSON.stringify({ text: cleanChunk.slice(0, 600), lang: targetLang === 'id' ? 'id' : 'en' })
                 });
+                if (response.status === 501) {
+                    neuralTtsStatusRef.current = 'off';
+                    return null;
+                }
                 if (!response.ok)
                     return null;
+                neuralTtsStatusRef.current = 'on';
                 const result = await response.json();
-                const base64Pcm = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+                const base64Pcm = result && result.audio ? result.audio : null;
                 if (base64Pcm) {
                     neuralAudioCacheRef.current.set(cacheKey, base64Pcm);
                 }
@@ -3725,9 +3339,7 @@ export default function HeroApp({ portal }) {
             fetchGeminiNeuralPcm(phrase, modelObj, targetLang).catch(() => { });
         });
     };
-    useEffect(() => {
-        prewarmNeuralVoiceCache(selectedVoiceModelId, lang);
-    }, [selectedVoiceModelId, lang, loginInput]);
+
     // Pemilihan suara browser: BAHASA WAJIB cocok dulu (id-ID untuk Indonesia), baru gender & kualitas.
     // Suara Inggris tidak pernah dipakai untuk membaca teks Indonesia (penyebab lafal "kebarat-baratan").
     const selectBestHumanBrowserVoice = (voices, modelObj, targetLang = langRef.current) => {
@@ -3751,10 +3363,14 @@ export default function HeroApp({ portal }) {
         const genderOf = (v) => (maleHints.test(v.name || '') && !/female/i.test(v.name || '') ? 'M' : femaleHints.test(v.name || '') ? 'F' : null);
         const scoreVoice = (v) => {
             let score = 0;
-            if (/natural|online|neural|wavenet|premium|enhanced|siri/i.test(v.name || ''))
-                score += 40;
-            if (v.localService)
-                score += 30; // suara lokal mengikuti pitch & rate (karakter usia 25-30 thn)
+            // Suara neural/online (mis. "Microsoft Ava Online (Natural)", "Google US English", Siri/Premium)
+            // jauh lebih manusiawi daripada suara sintetis lama bawaan sistem
+            if (/natural|neural|wavenet|premium|enhanced|siri/i.test(v.name || ''))
+                score += 80;
+            else if (/online|google/i.test(v.name || ''))
+                score += 50;
+            if (/zira|david|mark|hazel|george|espeak|compact/i.test(v.name || ''))
+                score -= 40; // suara desktop lama yang terdengar robotik
             if (!wantEn && /google/i.test(v.name || '') && !v.localService)
                 score -= 10;
             if (!wantEn && vl(v) === 'id-id')
@@ -3769,18 +3385,13 @@ export default function HeroApp({ portal }) {
         const sorted = [...pool].sort((a, b) => scoreVoice(b) - scoreVoice(a));
         const voice = sorted[0];
         const g = genderOf(voice);
-        // Jika suara Indonesia yang tersedia hanya satu gender, bedakan karakter lewat pitch
-        let pitch = modelObj.fallbackPitch;
-        if (isMale && g !== 'M')
-            pitch = Math.min(pitch, 0.78);
-        if (!isMale && g === 'M')
-            pitch = Math.max(pitch, 1.25);
-        return { voice, pitch, rate: modelObj.fallbackRate, langOk };
+        // Nada tidak diubah: pitch buatan membuat suara terdengar robotik
+        return { voice, pitch: modelObj.fallbackPitch, rate: modelObj.fallbackRate, langOk };
     };
     const speakWithHeroVoice = async (textToSpeak, autoMinimizeAfter = false, overrideModelId = null, overrideLang = null) => {
         stopAllHeroAudio();
         hardMuteMicForAiSpeech();
-        const activeLang = overrideLang || langRef.current || 'id';
+        const activeLang = overrideLang || langRef.current || 'en';
         const currentReqId = speechReqIdRef.current;
         const cleanText = textToSpeak.replace(/[*#_`]/g, '').trim();
         if (!cleanText) {
@@ -3796,9 +3407,7 @@ export default function HeroApp({ portal }) {
         ];
         const targetModelId = overrideModelId || selectedVoiceModelRef.current || selectedVoiceModelId;
         const modelObj = HERO_VOICE_MODELS.find((m) => m.id === targetModelId) || HERO_VOICE_MODELS[0];
-        setVoiceEngineBadge(activeLang === 'en'
-            ? `${modelObj.gender === 'F' ? 'Female' : 'Male'} ${modelObj.age} Yrs • ${modelObj.name}`
-            : `${modelObj.gender === 'F' ? 'Perempuan' : 'Laki-laki'} ${modelObj.age} Thn • ${modelObj.name}`);
+        setVoiceEngineBadge(HERO_ASSISTANT_NAME);
         const resumeMicAndFinish = () => {
             if (speechReqIdRef.current !== currentReqId)
                 return;
@@ -3946,7 +3555,7 @@ export default function HeroApp({ portal }) {
         }
     };
     const triggerJarvisEntranceGreeting = (astroObj, overrideLang = null) => {
-        const activeLang = overrideLang || langRef.current || 'id';
+        const activeLang = overrideLang || langRef.current || 'en';
         hasCompletedEntranceRef.current = false;
         isAwaitingFollowUpRef.current = false;
         voiceStageRef.current = 'entrance';
@@ -4029,10 +3638,13 @@ export default function HeroApp({ portal }) {
     const generateConversationalHeroReply = (userSpokenQuery, s, ev) => {
         return buildSpokenExplanationForQuery(userSpokenQuery, s, ev, langRef.current);
     };
+    // Prefetch spekulatif dari transkrip sementara dimatikan: memicu banyak permintaan TTS untuk teks yang belum final
     const speculativePrefetchForSpokenText = (rawText) => {
+        if (true)
+            return;
         if (!rawText || !currentScan || !evaluation)
             return;
-        const activeLang = langRef.current || 'id';
+        const activeLang = langRef.current || 'en';
         const useEn = activeLang === 'en';
         const modelObj = HERO_VOICE_MODELS.find((m) => m.id === selectedVoiceModelRef.current) ||
             HERO_VOICE_MODELS[0];
@@ -4075,7 +3687,7 @@ export default function HeroApp({ portal }) {
         const cmd = rawCommand.trim();
         if (!cmd)
             return;
-        const activeLang = langRef.current || 'id';
+        const activeLang = langRef.current || 'en';
         const useEn = activeLang === 'en';
         const lower = cmd.toLowerCase();
         setLastVoiceCommand(`"${cmd}"`);
@@ -4159,6 +3771,15 @@ export default function HeroApp({ portal }) {
         accumulatedSpeechRef.current = '';
         voiceStageRef.current = 'active_hud';
         setVoiceStage('active_hud');
+        if (fuzzyIntent.type === 'toggle_rx' && !isSurgeonUser) {
+            const denyReply = useEn
+                ? 'Sorry, intervention protocols can only be approved by an Admin (flight surgeon). You can view them in the Protocols tab.'
+                : 'Maaf, protokol intervensi hanya bisa disetujui oleh Admin (flight surgeon). Anda bisa melihatnya di tab Protokol.';
+            setFuzzyIntentBadge(useEn ? 'Admin only' : 'Khusus Admin');
+            setAiMessages((prev) => [...prev, { role: 'user', text: `${effectiveCommandText}` }, { role: 'assistant', text: denyReply }]);
+            speakWithHeroVoice(denyReply, true);
+            return;
+        }
         if (fuzzyIntent.type === 'toggle_rx') {
             const targetVal = fuzzyIntent.targetState;
             if (fuzzyIntent.rxKey === 'all') {
@@ -4182,6 +3803,12 @@ export default function HeroApp({ portal }) {
                 { role: 'assistant', text: rxReply }
             ]);
             speakWithHeroVoice(rxReply, true);
+            return;
+        }
+        if (fuzzyIntent.type === 'nav_tab' && fuzzyIntent.tab === 'sql' && !isSurgeonUser) {
+            const denyReply = useEn ? 'Sorry, the Research & SQL page is only available to Admins.' : 'Maaf, halaman Riset & SQL hanya bisa dibuka oleh Admin.';
+            setFuzzyIntentBadge(useEn ? 'Admin only' : 'Khusus Admin');
+            speakWithHeroVoice(denyReply, true);
             return;
         }
         if (fuzzyIntent.type === 'nav_tab') {
@@ -4251,13 +3878,38 @@ export default function HeroApp({ portal }) {
                 });
             }
         }
-        catch {
-            isRecognitionActiveRef.current = false;
+        catch (err) {
+            // InvalidStateError = pengenalan suara sudah berjalan; jangan dianggap mati (memicu instance ganda)
+            isRecognitionActiveRef.current = !!(err && err.name === 'InvalidStateError');
         }
+    };
+    // Mulai ulang otomatis setelah browser menghentikan pengenalan suara (Chrome melakukannya tiap beberapa
+    // detik saat hening). Indikator mikrofon TIDAK dimatikan di sini, jadi tidak berkedip nyala-mati.
+    const scheduleRecognitionRestart = (rec, delay = 250) => {
+        if (recognitionRestartTimerRef.current)
+            return;
+        recognitionRestartTimerRef.current = setTimeout(() => {
+            recognitionRestartTimerRef.current = null;
+            if (!authUserRef.current || !handsFreeEnabledRef.current || recognitionRef.current !== rec)
+                return;
+            // Saat HERO sedang berbicara, tunggu dulu (mikrofon tidak boleh menangkap suara HERO sendiri)
+            if (isMicLockedByTtsRef.current ||
+                isAiSpeakingRef.current ||
+                isSynthesizingVoiceRef.current ||
+                Date.now() < ttsCooldownUntilRef.current) {
+                scheduleRecognitionRestart(rec, 400);
+                return;
+            }
+            safeStartRecognition(rec);
+        }, delay);
     };
     const stopContinuousWakeWord = () => {
         handsFreeEnabledRef.current = false;
         setHandsFreeEnabled(false);
+        if (recognitionRestartTimerRef.current) {
+            clearTimeout(recognitionRestartTimerRef.current);
+            recognitionRestartTimerRef.current = null;
+        }
         if (pendingUtteranceTimerRef.current) {
             clearTimeout(pendingUtteranceTimerRef.current);
             pendingUtteranceTimerRef.current = null;
@@ -4294,6 +3946,16 @@ export default function HeroApp({ portal }) {
         setMicErrorMsg('');
         if (recognitionRef.current && isRecognitionActiveRef.current) {
             setIsMicListening(true);
+            return;
+        }
+        const wantLang = langRef.current === 'en' ? 'en-US' : 'id-ID';
+        if (recognitionRef.current && recognitionRef.current.lang === wantLang) {
+            if (recognitionRestartTimerRef.current) {
+                clearTimeout(recognitionRestartTimerRef.current);
+                recognitionRestartTimerRef.current = null;
+            }
+            setIsMicListening(true);
+            safeStartRecognition(recognitionRef.current);
             return;
         }
         if (recognitionRef.current) {
@@ -4478,23 +4140,14 @@ export default function HeroApp({ portal }) {
             };
             recognition.onend = () => {
                 isRecognitionActiveRef.current = false;
-                setIsMicListening(false);
-                if (isMicLockedByTtsRef.current ||
-                    isAiSpeakingRef.current ||
-                    isSynthesizingVoiceRef.current ||
-                    Date.now() < ttsCooldownUntilRef.current) {
+                // Instance lama yang sudah diganti: abaikan
+                if (recognitionRef.current !== recognition)
                     return;
-                }
                 if (authUserRef.current && handsFreeEnabledRef.current) {
-                    setTimeout(() => {
-                        if (authUserRef.current &&
-                            handsFreeEnabledRef.current &&
-                            !isRecognitionActiveRef.current &&
-                            !isMicLockedByTtsRef.current &&
-                            !isAiSpeakingRef.current) {
-                            safeStartRecognition(recognition);
-                        }
-                    }, 300);
+                    scheduleRecognitionRestart(recognition);
+                }
+                else {
+                    setIsMicListening(false);
                 }
             };
             recognitionRef.current = recognition;
@@ -4518,6 +4171,7 @@ export default function HeroApp({ portal }) {
             if (authUserRef.current &&
                 handsFreeEnabledRef.current &&
                 !isRecognitionActiveRef.current &&
+                !recognitionRestartTimerRef.current &&
                 !isMicLockedByTtsRef.current &&
                 !isAiSpeakingRef.current &&
                 !isSynthesizingVoiceRef.current &&
@@ -4771,7 +4425,7 @@ export default function HeroApp({ portal }) {
     };
     // --- AI ASSISTANT CO-PILOT HANDLER (BILINGUAL ID & EN) ---
     const askHeroAi = async (topicOrQuestion, isCustom = false, overrideLang = null) => {
-        const activeLang = overrideLang || langRef.current || 'id';
+        const activeLang = overrideLang || langRef.current || 'en';
         const useEn = activeLang === 'en';
         if (!currentScan || !evaluation) return;
         setIsAiLoading(true);
@@ -4979,7 +4633,28 @@ export default function HeroApp({ portal }) {
                     lang: cmd.lang
                 };
             }
+            case 'tab': {
+                const pages = {
+                    register: ['halaman Kru', 'the Crew page'],
+                    missions: ['halaman Misi', 'the Missions page'],
+                    users: ['halaman Pengguna', 'the Users page'],
+                    sql: ['halaman Riset & SQL', 'the Research & SQL page']
+                };
+                const [pid, pen] = pages[cmd.tab];
+                if (cmd.tab !== 'register' && !isSurgeonUser) {
+                    badge('Khusus Admin', 'Admin only');
+                    return { reply: T(`Maaf, ${pid} hanya bisa dibuka oleh Admin.`, `Sorry, ${pen} is only available to Admins.`) };
+                }
+                setActiveMainTab(cmd.tab);
+                scrollAppToTop();
+                badge(`Membuka ${pid}`, `Opening ${pen}`);
+                return { reply: T(`Siap, membuka ${pid}.`, `Sure, opening ${pen}.`) };
+            }
             case 'sim': {
+                if (cmd.mode === 'new_astro' && !isSurgeonUser) {
+                    badge('Khusus Admin', 'Admin only');
+                    return { reply: T('Maaf, hanya Admin yang bisa menambahkan astronot baru.', 'Sorry, only Admins can add new astronauts.') };
+                }
                 openSimulatorFor(cmd.mode);
                 const labels = {
                     new_astro: ['Membuka form tambah astronot baru', 'Opening the new astronaut form'],
@@ -5449,11 +5124,6 @@ export default function HeroApp({ portal }) {
                     ")")))))),
         React.createElement("div", { className: "flex flex-wrap items-center gap-2" },
             React.createElement("div", { role: "group", "aria-label": isEn ? 'Language' : 'Bahasa', className: "flex rounded-full border border-stone-200 p-1" }, ['id', 'en'].map((l) => (React.createElement("button", { key: l, type: "button", onClick: () => setLang(l), "aria-pressed": lang === l, className: `h-10 w-11 rounded-full text-sm font-medium ${lang === l ? 'bg-stone-900 text-ink' : 'text-stone-500 hover:text-stone-900'}` }, l.toUpperCase())))),
-            React.createElement("button", { type: "button", onClick: toggleHandsFreeWakeWord, "aria-pressed": handsFreeEnabled && isMicListening, className: "h-11 px-4 rounded-full border border-stone-200 text-sm font-medium text-stone-800 flex items-center gap-2 hover:border-stone-400" },
-                React.createElement("span", { className: `w-2 h-2 rounded-full ${handsFreeEnabled && isMicListening ? 'bg-signal' : 'bg-stone-300'}`, "aria-hidden": "true" }),
-                handsFreeEnabled && isMicListening
-                    ? isEn ? 'Turn off "Hi HERO"' : 'Matikan "Hai HERO"'
-                    : isEn ? 'Turn on "Hi HERO"' : 'Nyalakan "Hai HERO"'),
             React.createElement("button", { type: "button", onClick: handleSignOut, className: "h-11 px-4 rounded-full border border-stone-200 text-sm font-medium text-stone-800 hover:border-stone-400 flex items-center gap-2" },
                 React.createElement(LogOut, { className: "w-4 h-4", "aria-hidden": "true" }),
                 isEn ? 'Sign out' : 'Keluar'))));
@@ -6060,7 +5730,7 @@ export default function HeroApp({ portal }) {
                                         aiMessages.map((m, i) => (React.createElement("div", { key: i, className: `p-3 rounded-[14px] whitespace-pre-line ${m.role === 'user'
                                                 ? 'bg-stone-900 text-ink ml-6'
                                                 : 'bg-panel border border-seam text-ink mr-2'}` },
-                                            React.createElement("div", { className: "text-xs font-mono uppercase opacity-60 mb-1" }, m.role === 'user' ? currentAstro.name : 'HERO Medical AI'),
+                                            React.createElement("div", { className: "text-xs font-medium opacity-70 mb-1" }, m.role === 'user' ? currentAstro.name : HERO_ASSISTANT_NAME),
                                             m.text))),
                                         isAiLoading && (React.createElement("div", { className: "flex items-center gap-2 text-stone-500 font-mono p-2" },
                                             React.createElement(RefreshCw, { className: "w-3.5 h-3.5 animate-spin" }),
@@ -6520,25 +6190,25 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
             React.createElement("div", { ref: commandListRef, role: "dialog", "aria-modal": "true", "aria-label": isEn ? 'HERO voice command list' : 'Daftar perintah suara HERO', className: "hero-pop-in max-w-3xl w-full max-h-[85vh] overflow-y-auto bg-panel border border-stone-200 rounded-[24px] p-6", onClick: (e) => e.stopPropagation() },
                 React.createElement("div", { className: "flex items-start justify-between gap-4 pb-3 border-b border-stone-200" },
                     React.createElement("div", null,
-                        React.createElement("span", { className: "text-xs font-medium text-signal" }, "Speech & Command"),
-                        React.createElement("h2", { className: "text-lg font-medium text-stone-900 mt-1" }, isEn ? 'HERO Voice Command List' : 'Daftar Perintah Suara HERO'),
-                        React.createElement("p", { className: "text-xs text-stone-500" }, isEn
-                            ? 'In hands-free mode, start with "Hi HERO", e.g. "Hi HERO, add astronaut". Click a command to try it.'
-                            : 'Dalam mode hands-free, awali dengan "Hai HERO", contoh: "Hai HERO, tambahkan astronot". Klik perintah untuk mencobanya.')),
-                    React.createElement("button", { type: "button", onClick: () => setShowCommandList(false), className: "px-3 py-1 rounded-full bg-panel border border-stone-200 text-stone-600 text-xs hover:bg-stone-50" },
+                        React.createElement("span", { className: "text-xs font-medium text-signal" }, HERO_ASSISTANT_NAME),
+                        React.createElement("h2", { className: "text-lg font-medium text-stone-900 mt-1" }, isEn ? 'Command list' : 'Daftar perintah'),
+                        React.createElement("p", { className: "text-sm text-stone-500 mt-1" }, isEn
+                            ? 'Say "Hi HERO" first, e.g. "Hi HERO, show my mental data", or type it in the assistant panel. Click a command to try it.'
+                            : 'Awali dengan "Hai HERO", contoh: "Hai HERO, tampilkan data mental", atau ketik di panel asisten. Klik perintah untuk mencobanya.')),
+                    React.createElement("button", { type: "button", onClick: () => setShowCommandList(false), className: "h-11 px-5 rounded-full bg-panel border border-stone-200 text-stone-800 text-sm hover:border-stone-400 shrink-0" },
                         isEn ? 'Close' : 'Tutup')),
                 (() => {
                     let counter = 0;
-                    return HERO_COMMAND_GROUPS.map((grp) => (React.createElement("div", { key: grp.key, className: "mt-4" },
+                    return HERO_COMMAND_GROUPS.filter((grp) => commandCatalog.some((c) => c.g === grp.key)).map((grp) => (React.createElement("div", { key: grp.key, className: "mt-4" },
                         React.createElement("h3", { className: "text-xs font-medium text-stone-900 mb-2" }, isEn ? grp.en : grp.id),
-                        React.createElement("div", { className: "space-y-1" }, HERO_COMMAND_CATALOG.filter((c) => c.g === grp.key).map((c) => {
+                        React.createElement("div", { className: "space-y-1" }, commandCatalog.filter((c) => c.g === grp.key).map((c) => {
                             counter += 1;
                             const phrase = isEn ? c.en : c.id;
-                            return (React.createElement("button", { key: c.id, type: "button", onClick: () => {
+                            return (React.createElement("button", { key: c.en, type: "button", onClick: () => {
                                     setShowCommandList(false);
                                     executeVoiceCommand(phrase);
-                                }, className: "w-full text-left flex items-start gap-2 px-3 py-2 rounded-[14px] bg-panel border border-seam hover:border-stone-400 text-xs" },
-                                React.createElement("span", { className: "font-mono text-stone-400 w-6 shrink-0" },
+                                }, className: "w-full text-left flex items-start gap-3 px-4 py-3 rounded-[14px] bg-panel border border-seam hover:border-stone-400 text-sm leading-snug" },
+                                React.createElement("span", { className: "tabular text-stone-400 w-6 shrink-0" },
                                     counter,
                                     ")"),
                                 React.createElement("span", { className: "font-medium text-stone-900 shrink-0" },
@@ -6555,30 +6225,19 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                 fuzzyIntentBadge)),
             voiceLangWarning && !isEn && (React.createElement("div", { className: "max-w-[260px] px-3 py-2 rounded-[14px] bg-amber-50 border border-amber-200 text-amber-800 text-xs leading-snug" }, "Suara Bahasa Indonesia belum terpasang di perangkat ini, jadi lafal bisa kurang tepat. Pasang paket suara \"Indonesia\" di pengaturan ucapan sistem, lalu muat ulang halaman.")),
             React.createElement("div", { className: "flex items-center gap-3 pl-2 pr-2 py-2 rounded-full bg-panel/90 border border-seam shadow-[0_12px_36px_rgba(0,0,0,0.55)]" },
-                React.createElement("button", { onClick: toggleHandsFreeWakeWord, className: `w-8 h-8 rounded-full flex items-center justify-center ${handsFreeEnabled && isMicListening
+                React.createElement("button", { type: "button", onClick: toggleHandsFreeWakeWord, "aria-pressed": handsFreeEnabled, "aria-label": handsFreeEnabled ? (isEn ? 'Turn off microphone' : 'Matikan mikrofon') : (isEn ? 'Turn on microphone' : 'Nyalakan mikrofon'), title: handsFreeEnabled ? (isEn ? 'Microphone on' : 'Mikrofon menyala') : (isEn ? 'Microphone off' : 'Mikrofon mati'), className: `w-11 h-11 rounded-full flex items-center justify-center ${handsFreeEnabled
                         ? 'bg-signal text-ink'
                         : 'bg-stone-100 text-stone-500'}` },
                     React.createElement(Mic, { className: "w-4 h-4" })),
                 React.createElement("div", { onClick: () => executeVoiceCommand(isEn ? 'Hi HERO' : 'Hai HERO'), className: "hidden sm:block text-left cursor-pointer pr-1" },
                     React.createElement("div", { className: "text-xs font-medium text-stone-900" }, isEn ? 'Say "Hi HERO"' : 'Ucapkan "Hai HERO"'),
-                    React.createElement("div", { className: "text-xs text-stone-500" },
-                        HERO_VOICE_MODELS.find((m) => m.id === selectedVoiceModelId)?.name,
-                        " (",
-                        HERO_VOICE_MODELS.find((m) => m.id === selectedVoiceModelId)?.age,
-                        ' ',
-                        isEn ? 'Yrs' : 'Thn',
-                        ")")),
+                    React.createElement("div", { className: "text-xs text-stone-500" }, HERO_ASSISTANT_NAME)),
                 React.createElement("button", { type: "button", onClick: () => setShowCommandList(true), title: isEn ? 'Voice command list' : 'Daftar perintah suara', className: "w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-medium" }, "?")))),
-        voiceStage === 'active_hud' && (React.createElement("div", { className: "fixed bottom-5 right-5 z-40 w-80 sm:w-96 bg-panel border border-stone-200 rounded-[20px] p-5 shadow-2xl space-y-3" },
+        voiceStage === 'active_hud' && (React.createElement("div", { className: "hero-assistant fixed bottom-5 right-5 z-40 w-80 sm:w-96 bg-panel border border-stone-200 rounded-[20px] p-5 shadow-2xl space-y-3 font-sans" },
             React.createElement("div", { className: "flex items-center justify-between border-b border-stone-100 pb-3" },
                 React.createElement("div", { className: "flex items-center gap-2" },
                     React.createElement("span", { className: "w-2 h-2 rounded-full bg-signal animate-pulse" }),
-                    React.createElement("span", { className: "text-xs font-medium text-stone-900" },
-                        HERO_VOICE_MODELS.find((m) => m.id === selectedVoiceModelId)?.name,
-                        " (25-30",
-                        ' ',
-                        isEn ? 'Yrs' : 'Thn',
-                        ")")),
+                    React.createElement("span", { className: "text-sm font-medium tracking-[-0.01em] text-stone-900" }, HERO_ASSISTANT_NAME)),
                 React.createElement("div", { className: "flex items-center gap-2" },
                     isAiSpeaking && (React.createElement("button", { type: "button", onClick: () => interruptHeroAndListenForCorrection(''), className: "px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium", title: isEn
                             ? 'Say "Stop" / "Wrong" or click to interrupt & correct'
@@ -6595,7 +6254,7 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
             voiceLangWarning && !isEn && (React.createElement("div", { className: "text-xs leading-snug px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800" }, "Suara Bahasa Indonesia belum terpasang di perangkat ini, jadi lafal bisa kurang tepat. Pasang paket suara \"Indonesia\" di pengaturan bahasa/ucapan sistem (Windows: Waktu & bahasa \u2192 Ucapan; macOS: Aksesibilitas \u2192 Konten Lisan), lalu muat ulang halaman.")),
             React.createElement("div", { className: "bg-well rounded-[14px] p-3 flex flex-col items-center" },
                 React.createElement("div", { className: "h-8 flex items-center justify-center gap-1 w-full" }, waveBars.map((h, i) => (React.createElement("div", { key: i, className: "w-1 rounded-full bg-signal duration-100", style: { height: `${isAiSpeaking || isMicListening || isSynthesizingVoice ? h : 20}%` } })))),
-                liveHeardText && (React.createElement("div", { className: "text-xs font-mono text-emerald-700 mt-1 text-center" },
+                liveHeardText && (React.createElement("div", { className: "text-sm text-emerald-700 mt-2 text-center leading-snug" },
                     "\"",
                     liveHeardText,
                     "\"")),
@@ -6621,7 +6280,7 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                             executeVoiceCommand(textNow);
                     }, className: "mt-2 px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-medium" },
                     isEn ? 'Done Speaking (Process Now)' : 'Selesai Bicara (Proses Sekarang)'))),
-            React.createElement("p", { className: "text-xs text-stone-700 leading-relaxed max-h-28 overflow-y-auto" }, jarvisSpeechText),
+            React.createElement("p", { className: "text-sm text-stone-800 leading-relaxed max-h-32 overflow-y-auto" }, jarvisSpeechText),
             React.createElement("form", { onSubmit: (e) => {
                     e.preventDefault();
                     if (!hudTextInput.trim())
@@ -6629,25 +6288,9 @@ WHERE c.reading_date BETWEEN a.launch_date AND COALESCE(a.return_date, a.launch_
                     executeVoiceCommand(hudTextInput.trim());
                     setHudTextInput('');
                 }, className: "grid grid-cols-[1fr_auto] gap-2" },
-                React.createElement("label", { htmlFor: "hud-input", className: "col-span-2 text-xs text-stone-500" }, isEn ? 'Type a command' : 'Ketik perintah'),
-                React.createElement("input", { id: "hud-input", type: "text", value: hudTextInput, onChange: (e) => setHudTextInput(e.target.value), placeholder: isEn ? 'e.g. Show mental data' : 'contoh: Tampilkan data mental', className: "flex-1 bg-well border border-stone-200 rounded-full px-3 py-2 text-xs text-stone-900 focus:outline-none" }),
-                React.createElement("button", { type: "submit", className: "px-3 py-2 rounded-full bg-stone-900 text-ink text-xs font-medium" }, isEn ? 'Send' : 'Kirim')),
-            React.createElement("div", { className: "flex flex-wrap gap-1 pt-1 border-t border-stone-100" },
-                React.createElement("button", { type: "button", onClick: () => setShowCommandList(true), className: "text-xs font-medium px-3 py-1 rounded-full bg-stone-900 text-ink" },
-                    isEn ? 'Command List' : 'Daftar Perintah'),
-                React.createElement("button", { onClick: () => executeVoiceCommand(isEn ? 'Activate LBNP' : 'Aktifkan LBNP'), className: "text-xs font-medium px-3 py-1 rounded-full bg-emerald-100 text-emerald-900" },
-                    "+ ",
-                    isEn ? 'Activate LBNP' : 'Aktifkan LBNP'),
-                React.createElement("button", { onClick: () => executeVoiceCommand(isEn ? 'Activate CO2' : 'Aktifkan CO2'), className: "text-xs font-medium px-3 py-1 rounded-full bg-sky-100 text-sky-900" },
-                    "+ ",
-                    isEn ? 'Activate CO₂' : 'Aktifkan CO₂'),
-                React.createElement("button", { onClick: () => executeVoiceCommand(isEn ? 'Activate HRV' : 'Aktifkan HRV'), className: "text-xs font-medium px-3 py-1 rounded-full bg-amber-100 text-amber-900" },
-                    "+ ",
-                    isEn ? 'Activate HRV' : 'Aktifkan HRV'),
-                React.createElement("button", { onClick: () => executeVoiceCommand(isEn ? 'Show profile overview' : 'Tunjukkan data diri'), className: "text-xs font-medium px-3 py-1 rounded-full bg-stone-100 text-stone-700" },
-                    "\u2191 ",
-                    isEn ? 'Profile (Top)' : 'Data Diri (Atas)'),
-                React.createElement("button", { onClick: () => executeVoiceCommand(isEn
-                        ? 'Hi HERO, explain my 7 OCT, BHP mental health, and ISS cabin variables'
-                        : 'Hai HERO, jelaskan 7 variabel OCT, mental health BHP, dan lingkungan ISS saya'), className: "text-xs font-medium px-3 py-1 rounded-full border border-signal/30 text-signal" }, isEn ? 'Explain 7×7×7' : 'Jelaskan 7×7×7'))))));
+                React.createElement("label", { htmlFor: "hud-input", className: "col-span-2 text-sm text-stone-500" }, isEn ? 'Type a command' : 'Ketik perintah'),
+                React.createElement("input", { id: "hud-input", type: "text", value: hudTextInput, onChange: (e) => setHudTextInput(e.target.value), placeholder: isEn ? 'e.g. Show mental data' : 'contoh: Tampilkan data mental', className: "flex-1 bg-well border border-stone-200 rounded-full px-4 py-2 text-sm text-stone-900 focus:outline-none" }),
+                React.createElement("button", { type: "submit", className: "px-4 py-2 rounded-full bg-stone-900 text-ink text-sm font-medium" }, isEn ? 'Send' : 'Kirim')),
+            React.createElement("div", { className: "pt-3 border-t border-stone-100" },
+                React.createElement("button", { type: "button", onClick: () => setShowCommandList(true), className: "w-full h-11 rounded-full bg-stone-900 hover:bg-stone-800 text-ink text-sm font-medium" }, isEn ? 'Command list' : 'Daftar perintah'))))));
 }
