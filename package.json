@@ -1,15 +1,26 @@
 {
   "name": "hero-sans-mental-environment",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "HERO: pemantauan kesehatan mata (SANS), mental, dan kabin astronot dengan portal admin dan portal astronot.",
-  "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js",
-    "reset-data": "node -e \"require('fs').rmSync('data/hero-db.json',{force:true}); console.log('Data dihapus. Jalankan npm start untuk membuat ulang dari server/seed.json.')\""
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "reset-data": "node -e \"require('fs').rmSync(require('path').join(process.env.HERO_DATA_DIR||'data','hero-db.json'),{force:true}); console.log('Data dihapus. Jalankan ulang server untuk membuat ulang dari lib/server/seed.json.')\""
+  },
+  "dependencies": {
+    "lucide-react": "0.460.0",
+    "next": "^16.0.7",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "tailwindcss": "^4.1.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9"
   },
   "license": "UNLICENSED"
 }
