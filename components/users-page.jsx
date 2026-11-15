@@ -171,7 +171,7 @@ export default function UsersPage({ isEn, onPromoted }) {
     const promote = (u) => run(
         () => adminApi(`/api/admin/users/${encodeURIComponent(u.id)}/role`, { body: { role: 'admin' } }),
         (r) => T(`${u.name} sekarang Admin dan masuk lewat portal admin.`, `${u.name} is now an Admin and signs in through the admin portal.`) + (r.releasedCabins.length
-            ? T(` Kepemimpinan di ${r.releasedCabins.join(', ')} dilepas; tunjuk pemimpin baru di Simulasi input.`, ` Leadership of ${r.releasedCabins.join(', ')} was released; pick a new leader in Input simulator.`)
+            ? T(` Kepemimpinan di ${r.releasedCabins.join(', ')} dilepas; tunjuk pemimpin baru di menu Misi.`, ` Leadership of ${r.releasedCabins.join(', ')} was released; pick a new leader in Missions.`)
             : '')
     );
     const create = (body) => run(
@@ -197,8 +197,8 @@ export default function UsersPage({ isEn, onPromoted }) {
                 <div>
                     <h1 className="text-3xl font-light tracking-[-0.02em] text-stone-900">{T('Pengguna', 'Users')}</h1>
                     <p className="text-sm text-stone-500 mt-2 max-w-[70ch]">
-                        {T('Tambah, ubah, dan hapus akun, atau angkat Pemimpin/Anggota Cabin menjadi Admin. Role Admin terlindungi: Admin lain tidak bisa diturunkan, dihapus, atau diubah akunnya. Pemimpin Cabin ditunjuk per kabin di Simulasi input → Profil & penugasan.',
-                            'Add, edit and delete accounts, or promote cabin leaders and members to Admin. The Admin role is protected: other Admins cannot be demoted, deleted or edited. Cabin leaders are set per cabin in Input simulator → Profile & assignment.')}
+                        {T('Tambah, ubah, dan hapus akun, atau angkat Pemimpin/Anggota Cabin menjadi Admin. Role Admin terlindungi: Admin lain tidak bisa diturunkan, dihapus, atau diubah akunnya. Pemimpin Cabin ditunjuk per kabin di menu Misi → Ganti pemimpin.',
+                            'Add, edit and delete accounts, or promote cabin leaders and members to Admin. The Admin role is protected: other Admins cannot be demoted, deleted or edited. Cabin leaders are set per cabin in Missions → Change leader.')}
                     </p>
                 </div>
                 {users && mode !== 'new' && <button type="button" onClick={() => open('new')} className={btnPrimary}>{T('Tambah akun', 'Add account')}</button>}

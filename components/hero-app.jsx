@@ -5514,20 +5514,7 @@ export default function HeroApp({ portal }) {
                         }[authUser.appRole]),
                         React.createElement("br", null),
                         authUser.email),
-                    React.createElement("div", { className: "lg:hidden flex flex-col gap-4 border-t border-seam pt-6" }, contextControls)),
-                React.createElement("div", { className: "mt-8 bg-panel rounded-[20px] p-4 border border-seam space-y-3" },
-                    React.createElement("div", { className: "flex items-center justify-between" },
-                        React.createElement("span", { className: "text-xs font-medium text-signal" }, isEn ? 'HERO voice assistant' : 'Asisten suara HERO'),
-                        React.createElement("button", { onClick: toggleHandsFreeWakeWord, className: `text-xs font-medium px-2 py-1 rounded-full ${handsFreeEnabled && isMicListening
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-stone-100 text-stone-500'}` }, handsFreeEnabled && isMicListening ? '● Mic ON' : '○ Mic OFF')),
-                    React.createElement("div", { className: "flex items-center justify-between pt-1" },
-                        React.createElement("span", { className: "text-xs text-stone-400" }, isEn ? 'Test human voice' : 'Uji vokal manusiawi'),
-                        React.createElement("button", { type: "button", onClick: () => {
-                                const chosen = HERO_VOICE_MODELS.find((m) => m.id === selectedVoiceModelId) ||
-                                    HERO_VOICE_MODELS[0];
-                                speakWithHeroVoice(isEn ? chosen.sampleGreetingEn : chosen.sampleGreeting, false, chosen.id);
-                            }, className: "px-3 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-medium" }, isEn ? 'Try it' : 'Coba')))),
+                    React.createElement("div", { className: "lg:hidden flex flex-col gap-4 border-t border-seam pt-6" }, contextControls))),
             React.createElement("div", { id: "hero-main-scroll-container", className: "flex-1 min-w-0 px-5 py-6 sm:px-8 lg:px-10 lg:py-8 space-y-8" },
                 React.createElement("div", { id: "hero-section-top", className: "max-w-[1280px] mx-auto hidden lg:flex flex-wrap items-end justify-between gap-4" }, contextControls),
                 authNotice && (React.createElement("div", { className: "p-3 rounded-[14px] bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center justify-between" },
