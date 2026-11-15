@@ -86,7 +86,7 @@ Role efektif dihitung di server dari database, tidak pernah dari data yang dikir
 | Profil & data kesehatan rekan sekabin | Kelola | Hanya lihat | Hanya lihat |
 | Astronot & data di cabin lain | Kelola | Tidak terlihat | Tidak terlihat |
 | Data lingkungan cabin | Semua cabin | Kelola cabin yang dipimpinnya | Hanya lihat cabinnya |
-| Penugasan, misi, modul, pendaftaran astronot | Kelola | Lihat milik sendiri* | Lihat milik sendiri* |
+| Misi & kabin, penugasan, pendaftaran astronot, akun | Kelola | Lihat milik sendiri* | Lihat milik sendiri* |
 | Menunjuk Pemimpin Cabin (per cabin) | Ya | Tidak | Tidak |
 | Persetujuan protokol (LBNP, lingkungan, BHP) | Ya | Hanya lihat | Hanya lihat |
 | Menu Pengguna, mengangkat Admin, Riset & SQL, reset data | Ya | Tidak | Tidak |
@@ -120,13 +120,42 @@ Pemeriksaan dan perubahan role berjalan dalam satu langkah sinkron di proses Nod
 
 Menu di aplikasi menyesuaikan role (Admin melihat semua menu termasuk **Pengguna** dan **Riset & SQL**), tetapi itu hanya untuk tampilan. Semua aturan tetap diperiksa di server.
 
+### Misi = kabin
+
+Setiap misi punya tepat satu kabin, dan **astronot yang semisi selalu sekabin**. Dengan begitu mereka otomatis bisa saling melihat data (lihat tabel di atas).
+
+- Admin mengelola misi di menu **Misi**: tambah, ubah (nama, tanggal, nama kabin), dan hapus. Membuat misi otomatis membuat kabinnya. Kode misi tidak bisa diubah.
+- Misi yang masih punya astronot tidak bisa dihapus, supaya data kesehatan mereka tidak hilang. Misi kosong dihapus bersama kabin dan data lingkungan kabinnya.
+- Astronot baru, baik dari **Kru → Daftarkan astronot** maupun **Simulasi input → Tambah astronot baru**, wajib memilih misi yang sudah ada. Misi tidak lagi dibuat otomatis dari kode yang diketik.
+- Server selalu menentukan kabin dari misi penugasan, jadi `quartersModuleId` yang dikirim browser diabaikan. Misi dan kabin juga tidak bisa dibuat atau dihapus lewat `/api/sync`.
+- Pemimpin kabin yang penugasannya dihapus otomatis dilepas dari kabin itu.
+
+### Akun & kata sandi
+
+Admin mengelola akun di menu **Pengguna**:
+
+- **Tambah:** akun Admin baru, atau akun untuk astronot yang belum punya akun.
+- **Ubah:** email dan kata sandi akun astronot, atau data akunnya sendiri.
+- **Hapus:** akun Pemimpin/Anggota Cabin. Profil dan data kesehatannya tetap ada. Akun Admin tidak bisa dihapus.
+
+Aturan kata sandi ada di `lib/password-policy.js`, dan dipakai sama persis oleh form di browser maupun server:
+
+- 8–128 karakter, berisi huruf dan angka;
+- tidak diawali atau diakhiri spasi;
+- tidak sama dengan email atau bagian sebelum `@`;
+- kolom "Ulangi kata sandi" harus sama.
+
+Astronot baru tidak lagi mendapat kata sandi bawaan `password123`. Kata sandi juga tidak pernah disimpan di draf browser (localStorage). Mengganti kata sandi akun lain mengakhiri semua sesinya.
+
+`/api/sync` sekarang **atomik**: jika satu perubahan saja ditolak, tidak ada yang disimpan. Contohnya, pendaftaran dengan kata sandi lemah tidak lagi meninggalkan astronot tanpa akun.
+
 ### Menguji
 
 ```bash
 npm test
 ```
 
-Ada 20 skenario yang memanggil Route Handler sungguhan dengan database sementara: akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan, menghapus, atau mengambil alih Admin, pengangkatan Admin, dan beberapa Admin yang aktif bersamaan.
+Ada 34 skenario yang memanggil Route Handler sungguhan dengan database sementara. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik.
 
 ## Struktur project
 
@@ -145,18 +174,22 @@ hero-project/
 ├── components/
 │   ├── hero-portal.jsx    # memuat aplikasi hanya di browser (next/dynamic, ssr: false)
 │   ├── hero-app.jsx       # aplikasi React HERO (dipakai kedua portal lewat prop `portal`)
-│   └── users-page.jsx     # halaman Pengguna (khusus Admin)
+│   ├── users-page.jsx     # halaman Pengguna: CRUD akun & angkat Admin (khusus Admin)
+│   ├── missions-page.jsx  # halaman Misi: CRUD misi & kabinnya (khusus Admin)
+│   └── admin-api.js       # pemanggil API & gaya tombol halaman Admin
 ├── lib/
+│   ├── password-policy.js # aturan kata sandi (dipakai browser & server)
 │   ├── rf-models.js       # model Random Forest (glaukoma, mental, kabin) dalam JavaScript
 │   └── server/            # hanya dipakai di server
 │       ├── authz.js       # helper otorisasi terpusat (role, permission, cabin, perubahan role)
 │       ├── guard-page.js  # proteksi halaman portal di server
+│       ├── missions.js    # aturan misi = kabin (buat, ubah, hapus)
 │       ├── http.js        # pembantu Route Handler: CSRF, sesi, role, JSON, error
 │       ├── access.js      # SEMUA aturan hak akses (saring data & periksa perubahan)
 │       ├── auth.js        # hash kata sandi scrypt, sesi, cookie, batas percobaan login
 │       ├── store.js       # baca/tulis database JSON secara atomik
 │       └── seed.json      # data awal (kata sandi polos hanya di sini, di-hash saat dimuat)
-├── tests/rbac.test.js     # uji otorisasi (npm test)
+├── tests/                 # uji otorisasi & fitur Admin (npm test)
 └── data/                  # dibuat otomatis, berisi hero-db.json
 ```
 
@@ -171,9 +204,16 @@ Semua permintaan yang mengubah data wajib membawa header `X-HERO-Request: 1` (pe
 | `POST` | `/api/logout` | Mengakhiri sesi |
 | `GET` | `/api/session?portal=...` | Pengguna aktif + data yang boleh dilihat |
 | `GET` | `/api/db` | Data yang boleh dilihat |
-| `POST` | `/api/sync` | `{ changes: [{ table, op: 'insert'\|'update'\|'delete', row }] }`; perubahan yang tidak diizinkan ditolak satu per satu dengan alasannya |
+| `POST` | `/api/sync` | `{ changes: [{ table, op: 'insert'\|'update'\|'delete', row }] }`; atomik: jika ada yang ditolak, tidak ada yang disimpan dan semua alasannya dikembalikan |
 | `POST` | `/api/admin/reset` | Reset ke data contoh (Admin) |
 | `GET` | `/api/admin/users` | Semua pengguna dengan role efektif & cabin (Admin) |
+| `POST` | `/api/admin/users` | Buat akun: `{ kind: 'admin', name, title?, email, password }` atau `{ kind: 'astronaut', astronautId, email, password }` (Admin) |
+| `PATCH` | `/api/admin/users/:id` | Ubah `email`, `password` (dan `name`, `title` untuk akun Admin sendiri) (Admin) |
+| `DELETE` | `/api/admin/users/:id` | Hapus akun Pemimpin/Anggota Cabin (Admin) |
+| `GET` | `/api/admin/missions` | Misi beserta kabin, pemimpin, dan krunya (Admin) |
+| `POST` | `/api/admin/missions` | `{ id, name, startDate, endDate?, cabinName? }`, membuat misi dan kabinnya (Admin) |
+| `PATCH` | `/api/admin/missions/:id` | Ubah `name`, `startDate`, `endDate`, `cabinName` (Admin) |
+| `DELETE` | `/api/admin/missions/:id` | Hapus misi kosong beserta kabinnya; `409` jika masih ada astronot (Admin) |
 | `POST` | `/api/admin/users/:id/role` | `{ role: 'admin' }`, mengangkat Pemimpin/Anggota Cabin menjadi Admin (Admin) |
 
 Endpoint lain di bawah `/api/` dijawab `404` dalam format JSON.
