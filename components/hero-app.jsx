@@ -2177,9 +2177,20 @@ function domainSourceText(src, isEn) {
 }
 function DomainTimelineNote({ scan, isEn, eye }) {
   if (!scan || !scan._sources) return null;
-  const items = HERO_DOMAINS.map((dm) => ({ dm, src: scan._sources[dm] }));
-  const anyProjected = items.some((x) => x.src && x.src.source === "projected");
-  return /* @__PURE__ */ React.createElement("div", { className: "mt-3", "aria-live": "polite" }, /* @__PURE__ */ React.createElement("dl", { className: "flex flex-wrap gap-x-5 gap-y-1 text-xs" }, items.map(({ dm, src }) => /* @__PURE__ */ React.createElement("div", { key: dm, className: "flex gap-1.5" }, /* @__PURE__ */ React.createElement("dt", { className: "text-stone-500" }, dm === "ocular" ? `${isEn ? DOMAIN_LABELS.ocular.en : DOMAIN_LABELS.ocular.id} ${eye}` : isEn ? DOMAIN_LABELS[dm].en : DOMAIN_LABELS[dm].id, ":"), /* @__PURE__ */ React.createElement("dd", { className: src && src.source === "projected" ? "text-amber-400" : src && src.source === "scan" ? "text-stone-900" : "text-stone-700" }, domainSourceText(src, isEn))))), anyProjected && /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-xs text-amber-400" }, isEn ? "Projected values are a trend estimate, not a measurement." : "Nilai proyeksi adalah perkiraan tren, bukan hasil pengukuran."));
+  const label = (dm) => dm === "ocular" ? `${isEn ? DOMAIN_LABELS.ocular.en : DOMAIN_LABELS.ocular.id} ${eye}` : isEn ? DOMAIN_LABELS[dm].en : DOMAIN_LABELS[dm].id;
+  // Domain dengan status sama digabung jadi satu baris, supaya tidak berulang
+  const groups = [];
+  HERO_DOMAINS.forEach((dm) => {
+    const src = scan._sources[dm];
+    const text = domainSourceText(src, isEn);
+    const g = groups.find((x) => x.text === text);
+    if (g) g.domains.push(dm);
+    else groups.push({ text, source: src ? src.source : "none", domains: [dm] });
+  });
+  const anyProjected = groups.some((g) => g.source === "projected");
+  const allSame = groups.length === 1;
+  const tone = (source) => source === "projected" ? "text-amber-400" : source === "scan" ? "text-stone-900" : "text-stone-700";
+  return /* @__PURE__ */ React.createElement("div", { className: "mt-3", "aria-live": "polite" }, /* @__PURE__ */ React.createElement("dl", { className: "flex flex-wrap gap-x-5 gap-y-1 text-xs" }, groups.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.text, className: "flex gap-1.5" }, /* @__PURE__ */ React.createElement("dt", { className: "text-stone-500" }, allSame ? isEn ? "All data" : "Semua data" : g.domains.map(label).join(", "), ":"), /* @__PURE__ */ React.createElement("dd", { className: tone(g.source) }, g.text)))), anyProjected && /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-xs text-amber-400" }, isEn ? "Projected values are a trend estimate, not a measurement." : "Nilai proyeksi adalah perkiraan tren, bukan hasil pengukuran."));
 }
 function TimelineScopeControls({ astro, eye, onEye, onAssignment, db, isEn }) {
   const asgs = astro._assignments || [];
