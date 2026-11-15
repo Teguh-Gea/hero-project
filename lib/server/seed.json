@@ -41,6 +41,15 @@
    "name": "Dr. Ria Hartono",
    "title": "Admin / Flight Surgeon",
    "password": "password123"
+  },
+  {
+   "id": "ACC-ADMIN-02",
+   "email": "admin2@nasa.gov",
+   "role": "admin",
+   "astronautId": null,
+   "name": "Dr. Sari Wibowo",
+   "title": "Admin / Flight Surgeon",
+   "password": "password123"
   }
  ],
  "astronauts": [
