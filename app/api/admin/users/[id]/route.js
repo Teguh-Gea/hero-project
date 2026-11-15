@@ -25,7 +25,7 @@ export const PATCH = handler(async ({ req, me, params }) => {
     if (r.error) return r.error;
     await store.save();
     // Kata sandi diganti: sesi lain milik akun itu diakhiri (sesi Admin yang sedang dipakai tetap)
-    if (row.password) auth.destroySessionsForAccount(params.id, params.id === me.account.id ? me.session.sid : null);
+    if (row.password) await auth.destroySessionsForAccount(params.id, params.id === me.account.id ? me.session.sid : null);
     const db = store.get();
     return json(200, { user: describeUser(db.accounts.find((a) => a.id === params.id), db, me) });
 }, { roles: ['admin'] });
@@ -36,6 +36,6 @@ export const DELETE = handler(async ({ me, params }) => {
     const r = run(me, { table: 'accounts', op: 'delete', row: { id: params.id } });
     if (r.error) return r.error;
     await store.save();
-    auth.destroySessionsForAccount(params.id);
+    await auth.destroySessionsForAccount(params.id);
     return json(200, { ok: true });
 }, { roles: ['admin'] });

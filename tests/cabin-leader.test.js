@@ -1,7 +1,7 @@
 // Uji fitur Admin: menunjuk / mengganti Pemimpin Cabin lewat PUT /api/admin/missions/:id/leader.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { useTempData, route, call, login as loginAs } from './helpers.js';
+import { useTempData, dbNow, route, call, login as loginAs } from './helpers.js';
 
 useTempData();
 let R, store;
@@ -30,7 +30,7 @@ test('Admin mengganti Pemimpin Cabin; hak akses ikut berpindah', async () => {
     assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.equal(r.data.previous, 'AST-0154');
     assert.equal(r.data.mission.cabin.leaderName, 'Spec. Kenji Takahashi');
-    assert.equal(store.get().modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, 'AST-0038');
+    assert.equal((await dbNow()).modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, 'AST-0038');
 
     // berlaku langsung, tanpa login ulang
     assert.equal(await appRole(k), 'cabin_leader');
@@ -61,7 +61,7 @@ test('Validasi: hanya kru misi itu dan bukan Admin', async () => {
 });
 
 test('Hanya Admin: Pemimpin & Anggota Cabin ditolak 403, tanpa login 401', async () => {
-    const before = JSON.stringify(store.get().modules);
+    const before = JSON.stringify((await dbNow()).modules);
     const k = await login('kenji.takahashi@jaxa.jp', 'astronot');
     const e = await login('elena.rostova@nasa.gov', 'astronot');
     const x = await login('alex.vinson@nasa.gov', 'astronot');
@@ -71,8 +71,8 @@ test('Hanya Admin: Pemimpin & Anggota Cabin ditolak 403, tanpa login 401', async
     assert.equal((await put(x, 'INC-004', null)).status, 403, 'pemimpin melepas jabatannya');
     assert.equal((await put(undefined, 'INC-051', 'AST-0038')).status, 401);
     // lewat /api/sync juga ditolak untuk non-Admin
-    const mod = store.get().modules.find((m) => m.id === 'INC-051-N2');
+    const mod = (await dbNow()).modules.find((m) => m.id === 'INC-051-N2');
     const r = await call(R.sync, 'POST', { cookie: k, body: { changes: [{ table: 'modules', op: 'update', row: { ...mod, leaderAstronautId: 'AST-0038' } }] } });
     assert.equal(r.data.applied, 0);
-    assert.equal(JSON.stringify(store.get().modules), before);
+    assert.equal(JSON.stringify((await dbNow()).modules), before);
 });

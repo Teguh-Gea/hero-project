@@ -11,7 +11,7 @@ export const POST = handler(async ({ me }) => {
     await store.reset();
     const db = store.get();
     const fresh = db.accounts.find((a) => a.email === me.account.email) || db.accounts.find((a) => a.role === 'admin');
-    const sid = auth.createSession(fresh.id);
-    auth.destroySession(me.session.sid);
+    const sid = await auth.createSession(fresh.id);
+    await auth.destroySession(me.session.sid);
     return json(200, { user: userPayload(db, fresh), db: filterDb(fresh, db) }, { 'Set-Cookie': auth.sessionCookie(sid, SECURE_COOKIE) });
 }, { roles: ['admin'] });

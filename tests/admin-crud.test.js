@@ -1,7 +1,7 @@
 // Uji fitur Admin: CRUD akun, CRUD misi (misi = kabin), validasi kata sandi, sinkronisasi atomik.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { useTempData, route, call, login as loginAs, tryLogin } from './helpers.js';
+import { useTempData, dbNow, route, call, login as loginAs, tryLogin } from './helpers.js';
 import { passwordProblem } from '../lib/password-policy.js';
 
 useTempData();
@@ -106,8 +106,8 @@ test('Admin menghapus akun astronot; profil & data kesehatannya tetap ada', asyn
     assert.equal(r.status, 200);
     assert.equal((await call(R.db, 'GET', { cookie: m })).status, 401);
     assert.equal((await tryLogin(R.login, 'marcus.vance@nasa.gov', 'password123', 'astronot')).status, 401);
-    assert.ok(store.get().astronauts.some((x) => x.id === 'AST-0067'));
-    assert.ok(store.get().ocularExams.some((x) => x.assignmentId === 'ASG-AST-0067-INC-004'));
+    assert.ok((await dbNow()).astronauts.some((x) => x.id === 'AST-0067'));
+    assert.ok((await dbNow()).ocularExams.some((x) => x.assignmentId === 'ASG-AST-0067-INC-004'));
 });
 
 test('Bukan Admin tidak bisa memakai API akun & misi', async () => {
@@ -136,7 +136,7 @@ test('Admin membuat misi: kabinnya ikut dibuat', async () => {
     assert.equal(r.status, 201, JSON.stringify(r.data));
     assert.equal(r.data.mission.id, 'INC-063');
     assert.equal(r.data.mission.cabin.id, 'INC-063-N2');
-    assert.ok(store.get().modules.some((m) => m.id === 'INC-063-N2' && m.missionId === 'INC-063'));
+    assert.ok((await dbNow()).modules.some((m) => m.id === 'INC-063-N2' && m.missionId === 'INC-063'));
     assert.equal((await call(R.missions, 'POST', { cookie: a, body: { id: 'INC-063', name: 'Lagi', startDate: '2027-01-10' } })).status, 409);
 });
 
@@ -168,7 +168,7 @@ test('Semisi = sekabin: kabin penugasan selalu kabin misinya', async () => {
         { table: 'astronauts', op: 'insert', row: { id: 'AST-0901', name: 'Eng. Dimas', sex: 'M' } },
         { table: 'assignments', op: 'insert', row: { id: 'ASG-AST-0901-INC-063', astronautId: 'AST-0901', missionId: 'INC-063', quartersModuleId: 'INC-051-N2', launchDate: '2027-01-10', plannedDays: 180 } });
     assert.equal(r.data.applied, 2);
-    assert.equal(store.get().assignments.find((x) => x.id === 'ASG-AST-0901-INC-063').quartersModuleId, 'INC-063-N2');
+    assert.equal((await dbNow()).assignments.find((x) => x.id === 'ASG-AST-0901-INC-063').quartersModuleId, 'INC-063-N2');
     // misi yang belum ada ditolak
     const r2 = await sync(a,
         { table: 'astronauts', op: 'insert', row: { id: 'AST-0902', name: 'X', sex: 'M' } },
@@ -182,7 +182,7 @@ test('Semisi = sekabin: kabin penugasan selalu kabin misinya', async () => {
 
 test('Sinkronisasi atomik: pendaftaran dengan kata sandi lemah tidak menyisakan data setengah jadi', async () => {
     const a = await login('admin2@nasa.gov', 'admin');
-    const before = JSON.stringify(store.get());
+    const before = JSON.stringify((await dbNow()));
     const r = await sync(a,
         { table: 'astronauts', op: 'insert', row: { id: 'AST-0903', name: 'Lt. Sari', sex: 'F' } },
         { table: 'accounts', op: 'insert', row: { id: 'ACC-AST-0903', role: 'astronaut', astronautId: 'AST-0903', email: 'sari@nasa.gov', password: '123' } },
@@ -190,7 +190,7 @@ test('Sinkronisasi atomik: pendaftaran dengan kata sandi lemah tidak menyisakan 
     assert.equal(r.data.applied, 0);
     assert.equal(r.data.rejected.length, 1);
     assert.match(r.data.rejected[0].reason, /minimal 8/);
-    assert.equal(JSON.stringify(store.get()), before, 'database tidak berubah sama sekali');
+    assert.equal(JSON.stringify((await dbNow())), before, 'database tidak berubah sama sekali');
 });
 
 test('Hapus misi: ditolak jika masih ada astronot; misi kosong terhapus bersama kabinnya', async () => {
@@ -202,14 +202,14 @@ test('Hapus misi: ditolak jika masih ada astronot; misi kosong terhapus bersama 
     const r = await call(R.mission, 'DELETE', { cookie: a, params: { id: 'INC-063' } });
     assert.equal(r.status, 200);
     assert.deepEqual(r.data.removedCabins, ['INC-063-N2']);
-    assert.ok(!store.get().missions.some((m) => m.id === 'INC-063'));
-    assert.ok(!store.get().modules.some((m) => m.id === 'INC-063-N2'));
+    assert.ok(!(await dbNow()).missions.some((m) => m.id === 'INC-063'));
+    assert.ok(!(await dbNow()).modules.some((m) => m.id === 'INC-063-N2'));
     assert.equal((await call(R.mission, 'DELETE', { cookie: a, params: { id: 'INC-063' } })).status, 404);
 });
 
 test('Pemimpin yang penugasannya dihapus otomatis dilepas dari kabin', async () => {
     const a = await login('admin2@nasa.gov', 'admin');
-    assert.equal(store.get().modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, 'AST-0154');
+    assert.equal((await dbNow()).modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, 'AST-0154');
     assert.equal((await sync(a, { table: 'assignments', op: 'delete', row: { id: 'ASG-AST-0154-INC-051' } })).data.applied, 1);
-    assert.equal(store.get().modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, null);
+    assert.equal((await dbNow()).modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, null);
 });
