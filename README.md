@@ -102,7 +102,7 @@ Satu-satunya jalan untuk mengubah role adalah `POST /api/admin/users/:id/role` d
 | Pemimpin Cabin / Anggota Cabin | Admin | Diizinkan. Kepemimpinan cabinnya dilepas; profil & data kesehatan tetap ada; ia masuk lagi lewat portal admin. |
 | Admin | Admin | `409`, sudah Admin |
 | Admin | Pemimpin / Anggota Cabin (atau role apa pun) | `403`, role Admin terlindungi |
-| Pemimpin ↔ Anggota | | `403` lewat endpoint ini. Pemimpin ditentukan per cabin di **Simulasi input → Profil & penugasan**. |
+| Pemimpin ↔ Anggota | | `403` lewat endpoint ini. Pemimpin ditunjuk per cabin di **Misi → Ganti pemimpin** (lihat di bawah). |
 | Akun sendiri | | `403` |
 
 Proteksi Admin juga berlaku di `/api/sync`: Admin tidak bisa menghapus akun Admin lain atau mengubah email, nama, maupun kata sandinya. Setiap Admin hanya mengelola akunnya sendiri. Akun Admin juga tidak bisa ditunjuk sebagai Pemimpin Cabin.
@@ -119,6 +119,14 @@ Pemeriksaan dan perubahan role berjalan dalam satu langkah sinkron di proses Nod
 | `lib/server/guard-page.js` | Proteksi halaman portal di server |
 
 Menu di aplikasi menyesuaikan role (Admin melihat semua menu termasuk **Pengguna** dan **Riset & SQL**), tetapi itu hanya untuk tampilan. Semua aturan tetap diperiksa di server.
+
+### Menunjuk Pemimpin Cabin
+
+Hanya Admin yang bisa menentukan siapa Pemimpin Cabin, lewat **Misi → Ganti pemimpin** pada misi yang bersangkutan (`PUT /api/admin/missions/:id/leader`).
+
+- Pilihannya hanya kru misi itu. Akun Admin tidak bisa dipilih, dan kabin juga boleh dibiarkan tanpa pemimpin.
+- Pemimpin lama otomatis menjadi Anggota Cabin, dan pemimpin baru langsung bisa mengisi data lingkungan kabin tanpa perlu login ulang.
+- Pemimpin dan Anggota Cabin mendapat `403` jika mencoba mengubahnya, baik lewat endpoint ini maupun `/api/sync`.
 
 ### Misi = kabin
 
@@ -155,7 +163,7 @@ Astronot baru tidak lagi mendapat kata sandi bawaan `password123`. Kata sandi ju
 npm test
 ```
 
-Ada 34 skenario yang memanggil Route Handler sungguhan dengan database sementara. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik.
+Ada 38 skenario yang memanggil Route Handler sungguhan dengan database sementara. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin.
 
 ## Struktur project
 
@@ -213,6 +221,7 @@ Semua permintaan yang mengubah data wajib membawa header `X-HERO-Request: 1` (pe
 | `GET` | `/api/admin/missions` | Misi beserta kabin, pemimpin, dan krunya (Admin) |
 | `POST` | `/api/admin/missions` | `{ id, name, startDate, endDate?, cabinName? }`, membuat misi dan kabinnya (Admin) |
 | `PATCH` | `/api/admin/missions/:id` | Ubah `name`, `startDate`, `endDate`, `cabinName` (Admin) |
+| `PUT` | `/api/admin/missions/:id/leader` | `{ astronautId }` atau `{ astronautId: null }`, menunjuk/mengganti Pemimpin Cabin (Admin) |
 | `DELETE` | `/api/admin/missions/:id` | Hapus misi kosong beserta kabinnya; `409` jika masih ada astronot (Admin) |
 | `POST` | `/api/admin/users/:id/role` | `{ role: 'admin' }`, mengangkat Pemimpin/Anggota Cabin menjadi Admin (Admin) |
 

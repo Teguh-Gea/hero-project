@@ -46,6 +46,32 @@ function MissionForm({ initial, isNew, busy, onSubmit, onCancel, T }) {
     );
 }
 
+// Pilih Pemimpin Cabin dari kru misi (Admin tidak bisa dipilih). Server memeriksa ulang.
+function LeaderForm({ mission, busy, onSubmit, onCancel, T }) {
+    const [leader, setLeader] = useState(mission.cabin.leaderAstronautId || '');
+    const eligible = mission.crew.filter((c) => c.canLead);
+    const id = `leader-${mission.id}`;
+    return (
+        <form noValidate onSubmit={(e) => { e.preventDefault(); onSubmit(leader || null); }} className="rounded-[14px] border border-seam bg-well p-4 grid gap-3">
+            <label htmlFor={id} className="text-xs text-stone-500">{T(`Pemimpin Cabin ${mission.cabin.name} (misi ${mission.id})`, `Cabin leader of ${mission.cabin.name} (mission ${mission.id})`)}</label>
+            <select id={id} value={leader} onChange={(e) => setLeader(e.target.value)} className={inputCls}>
+                <option value="">{T('Tanpa pemimpin', 'No leader')}</option>
+                {eligible.map((c) => <option key={c.astronautId} value={c.astronautId}>{c.name} ({c.astronautId})</option>)}
+            </select>
+            <p className="text-xs text-stone-500">
+                {T('Hanya Pemimpin Cabin yang bisa mengisi dan mengubah data lingkungan kabin ini. Pemimpin sebelumnya otomatis menjadi Anggota Cabin. Akun Admin tidak bisa dipilih.',
+                    'Only the cabin leader can enter and edit this cabin’s environment data. The previous leader becomes a cabin member. Admin accounts cannot be chosen.')}
+            </p>
+            <div className="flex flex-wrap gap-2">
+                <button type="submit" disabled={busy || leader === (mission.cabin.leaderAstronautId || '')} className={btnPrimary}>
+                    {busy ? T('Menyimpan…', 'Saving…') : T('Simpan pemimpin', 'Save leader')}
+                </button>
+                <button type="button" onClick={onCancel} className={btnGhost}>{T('Batal', 'Cancel')}</button>
+            </div>
+        </form>
+    );
+}
+
 export default function MissionsPage({ isEn, onChanged }) {
     const T = (id, en) => (isEn ? en : id);
     const [missions, setMissions] = useState(null);
@@ -83,6 +109,12 @@ export default function MissionsPage({ isEn, onChanged }) {
     const update = (id, f) => run(
         () => adminApi(`/api/admin/missions/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name: f.name, startDate: f.startDate, endDate: f.endDate || null, cabinName: f.cabinName } }),
         T(`Misi ${id} disimpan.`, `Mission ${id} saved.`)
+    );
+    const changeLeader = (m, astronautId) => run(
+        () => adminApi(`/api/admin/missions/${encodeURIComponent(m.id)}/leader`, { method: 'PUT', body: { astronautId } }),
+        astronautId
+            ? T(`${m.crew.find((c) => c.astronautId === astronautId)?.name || astronautId} sekarang Pemimpin Cabin misi ${m.id}.`, `${m.crew.find((c) => c.astronautId === astronautId)?.name || astronautId} is now cabin leader of mission ${m.id}.`)
+            : T(`Kabin misi ${m.id} sekarang tanpa pemimpin.`, `Mission ${m.id}’s cabin now has no leader.`)
     );
     const remove = (id) => run(
         () => adminApi(`/api/admin/missions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -122,6 +154,7 @@ export default function MissionsPage({ isEn, onChanged }) {
                     {missions.map((m) => {
                         const editing = mode && mode.edit === m.id;
                         const deleting = mode && mode.del === m.id;
+                        const leading = mode && mode.leader === m.id;
                         return (
                             <li key={m.id} className="rounded-[20px] border border-seam bg-panel p-6 space-y-4">
                                 {editing ? (
@@ -139,7 +172,7 @@ export default function MissionsPage({ isEn, onChanged }) {
                                                 <div><dt className="text-xs text-stone-500">{T('Mulai', 'Start')}</dt><dd className="font-mono text-stone-800">{m.startDate || '–'}</dd></div>
                                                 <div><dt className="text-xs text-stone-500">{T('Selesai', 'End')}</dt><dd className="font-mono text-stone-800">{m.endDate || '–'}</dd></div>
                                                 <div><dt className="text-xs text-stone-500">{T('Kabin', 'Cabin')}</dt><dd className="text-stone-800">{m.cabin ? m.cabin.name : T('Belum ada', 'None')}</dd></div>
-                                                <div><dt className="text-xs text-stone-500">{T('Pemimpin kabin', 'Cabin leader')}</dt><dd className="text-stone-800">{m.cabin && m.cabin.leaderName ? m.cabin.leaderName : T('Belum ditunjuk', 'Not set')}</dd></div>
+                                                <div><dt className="text-xs text-stone-500">{T('Pemimpin Cabin', 'Cabin leader')}</dt><dd className="text-stone-800">{m.cabin && m.cabin.leaderName ? m.cabin.leaderName : T('Belum ditunjuk', 'Not set')}</dd></div>
                                             </dl>
                                             <p className="text-xs text-stone-500">
                                                 {m.crewCount
@@ -147,14 +180,16 @@ export default function MissionsPage({ isEn, onChanged }) {
                                                     : T('Belum ada astronot.', 'No astronauts yet.')}
                                             </p>
                                         </div>
-                                        {!deleting && (
+                                        {!deleting && !leading && (
                                             <div className="flex flex-wrap gap-2 md:justify-end">
+                                                {m.cabin && m.crewCount > 0 && <button type="button" onClick={() => { setMode({ leader: m.id }); setNotice(''); setError(''); }} className={btnGhost}>{T('Ganti pemimpin', 'Change leader')}</button>}
                                                 <button type="button" onClick={() => { setMode({ edit: m.id }); setNotice(''); setError(''); }} className={btnGhost}>{T('Ubah', 'Edit')}</button>
                                                 <button type="button" onClick={() => { setMode({ del: m.id }); setNotice(''); setError(''); }} className={btnDanger}>{T('Hapus', 'Delete')}</button>
                                             </div>
                                         )}
                                     </div>
                                 )}
+                                {leading && <LeaderForm mission={m} busy={busy} onSubmit={(id) => changeLeader(m, id)} onCancel={() => setMode(null)} T={T} />}
                                 {deleting && (
                                     <div role="group" aria-label={T('Konfirmasi hapus', 'Confirm delete')} className="rounded-[14px] border border-rose-500/40 bg-rose-50 p-4 space-y-3">
                                         {m.crewCount ? (
