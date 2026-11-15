@@ -1,18 +1,19 @@
 import * as store from '../../../lib/server/store.js';
 import * as auth from '../../../lib/server/auth.js';
-import { applyChanges, filterDb } from '../../../lib/server/access.js';
+import { applyAtomic, filterDb } from '../../../lib/server/access.js';
 import { handler, json, readJson, userPayload } from '../../../lib/server/http.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // { changes: [{ table, op: 'insert' | 'update' | 'delete', row }] }
-// Perubahan yang tidak diizinkan ditolak satu per satu dengan alasannya.
+// Atomik: jika satu perubahan saja ditolak, tidak ada yang disimpan, dan semua alasan penolakan dikembalikan.
 export const POST = handler(async ({ req, me }) => {
-    const db = store.get();
     const body = await readJson(req);
     const changes = Array.isArray(body.changes) ? body.changes.slice(0, 500) : [];
-    const result = applyChanges(me.account, db, changes);
+    const result = applyAtomic(me.account, store.get(), changes);
+    if (result.db) store.replace(result.db);
+    const db = store.get();
     if (result.applied) await store.save();
     // Akun yang dihapus admin kehilangan sesinya
     const accountIds = new Set(db.accounts.map((a) => a.id));

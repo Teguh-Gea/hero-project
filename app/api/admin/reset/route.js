@@ -8,11 +8,10 @@ export const dynamic = 'force-dynamic';
 
 // Reset ke data contoh (khusus admin)
 export const POST = handler(async ({ me }) => {
-    if (me.account.role !== 'admin') return json(403, { error: 'Hanya admin yang bisa mereset data.' });
     await store.reset();
     const db = store.get();
     const fresh = db.accounts.find((a) => a.email === me.account.email) || db.accounts.find((a) => a.role === 'admin');
     const sid = auth.createSession(fresh.id);
     auth.destroySession(me.session.sid);
     return json(200, { user: userPayload(db, fresh), db: filterDb(fresh, db) }, { 'Set-Cookie': auth.sessionCookie(sid, SECURE_COOKIE) });
-}, { auth: true });
+}, { roles: ['admin'] });
