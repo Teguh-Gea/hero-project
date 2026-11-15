@@ -28,7 +28,25 @@ npm start            # next start, port 3000
 
 Font Geist di-host sendiri lewat `next/font` dan React/ikon dibundel saat build, jadi browser tidak lagi memuat apa pun dari CDN.
 
-Saat pertama kali API dipanggil, server membuat `data/hero-db.json` dari `lib/server/seed.json`. Untuk kembali ke data awal: hentikan server lalu jalankan `npm run reset-data`, atau pakai tombol **Reset ke data contoh** di portal admin (menu Simulasi input).
+Tanpa `DATABASE_URL`, data disimpan di file `data/hero-db.json` dan sesi di memori. Saat pertama kali API dipanggil, server membuat file itu dari data simulasi di `lib/server/seed.js`. Untuk kembali ke data awal: hentikan server lalu jalankan `npm run reset-data`, atau pakai tombol **Reset ke data contoh** di portal admin (menu Simulasi input).
+
+## Deploy ke Vercel (database Neon Postgres)
+
+Di Vercel, file sistem hanya-baca dan server berjalan di banyak instance. Karena itu HERO memakai Postgres secara otomatis jika ada `DATABASE_URL`. Data, sesi login, dan batas percobaan login semuanya disimpan di sana.
+
+1. Di dashboard Vercel, buka proyek → **Storage** → pilih **Neon** (Serverless Postgres) → **Install / Create**. Paket gratis sudah cukup.
+2. Hubungkan database ke proyek ini (**Connect Project**) untuk Production, Preview, dan Development. Vercel otomatis menambahkan `DATABASE_URL` di **Settings → Environment Variables**. Jika Anda memberi awalan lain, misalnya `STORAGE_DATABASE_URL`, itu juga dikenali.
+3. **Deploy ulang** (**Deployments** → deploy terakhir → **Redeploy**). Variabel lingkungan baru hanya terbaca oleh deploy yang dibuat setelah variabel itu ditambahkan.
+4. Buka situsnya dan login, misalnya `teguh@hero.com` / `password123`. Permintaan pertama otomatis membuat tabel (`hero_state`, `hero_sessions`, `hero_login_attempts`) dan mengisinya dengan data simulasi.
+
+Kembali ke data simulasi di Vercel: login sebagai Admin → **Simulasi input → Reset ke data contoh**. (`npm run reset-data` hanya untuk file lokal.)
+
+Cookie sesi otomatis bertanda `Secure` di Vercel. Jika muncul pesan "Database belum tersambung" atau "Gagal terhubung ke database", periksa langkah 2–3. Untuk memakai database Neon yang sama dari komputer sendiri, jalankan `vercel env pull .env.local` lalu `npm run dev`.
+
+**Cara datanya disimpan:**
+- Seluruh data HERO disimpan sebagai satu dokumen JSONB di baris `hero_state`, dengan kolom `version`.
+- Setiap permintaan membaca salinannya sendiri. Saat menyimpan, versinya dicek (*optimistic locking*). Jika permintaan lain sudah menyimpan lebih dulu, permintaan diulang otomatis dengan data terbaru, termasuk semua pemeriksaan hak aksesnya.
+- ID sesi disimpan sebagai hash SHA-256.
 
 ### Pengaturan lewat variabel lingkungan
 
@@ -40,7 +58,8 @@ Secara bawaan `next start` mendengarkan di semua antarmuka jaringan. Untuk memba
 | `PORT` | `3000` | Port server (atau `npm start -- -p 4000`) |
 | `HERO_DATA_DIR` | `./data` | Folder file database |
 | `HERO_DEMO` | `1` | `0` untuk menyembunyikan daftar akun demo di halaman login |
-| `HERO_SECURE_COOKIE` | `0` | `1` jika server di belakang HTTPS (cookie sesi diberi tanda `Secure`) |
+| `DATABASE_URL` | (kosong) | URL Postgres (Neon). Jika ada, data & sesi disimpan di Postgres; jika tidak, di file + memori |
+| `HERO_SECURE_COOKIE` | `0` (`1` di Vercel) | `1` jika server di belakang HTTPS (cookie sesi diberi tanda `Secure`) |
 
 ## Akun demo (data simulasi)
 
@@ -69,7 +88,7 @@ Akun Admin hanya bisa masuk lewat portal admin, dan akun astronot hanya lewat po
 HERO memakai sistem autentikasi buatan sendiri yang sudah ada sejak awal (tidak memakai Better Auth):
 
 - Login di `/admin/login` atau `/astronot/login`. Kata sandi disimpan sebagai hash scrypt, dan login dibatasi 8 kali gagal per 10 menit.
-- Sesi berupa ID acak 256-bit di cookie `hero_sid` (`HttpOnly`, `SameSite=Strict`, `Secure` jika `HERO_SECURE_COOKIE=1`). Sesi bertahan 8 jam sejak terakhir dipakai, termasuk setelah browser ditutup.
+- Sesi berupa ID acak 256-bit di cookie `hero_sid` (`HttpOnly`, `SameSite=Strict`, `Secure` di Vercel atau jika `HERO_SECURE_COOKIE=1`), disimpan di Postgres (atau memori saat lokal) sebagai hash. Sesi bertahan 8 jam sejak terakhir dipakai, termasuk setelah browser ditutup.
 - Halaman diproteksi di server (`lib/server/guard-page.js`) sebelum HTML dikirim. Pengguna yang belum login dialihkan ke halaman login portal itu, dan pengguna yang membuka portal yang salah dialihkan ke portal miliknya.
 - Setiap permintaan API membaca ulang akun dari database. Perubahan role atau akun yang dihapus langsung berlaku, dan sesi milik pengguna yang diangkat atau dihapus diakhiri.
 
@@ -168,7 +187,7 @@ Astronot baru tidak lagi mendapat kata sandi bawaan `password123`. Kata sandi ju
 npm test
 ```
 
-Ada 43 skenario yang memanggil Route Handler sungguhan dengan database sementara. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin. `tests/seed.test.js` memeriksa data simulasi (15 akun bisa masuk, 3 orang per misi, isolasi kabin). Uji lainnya memakai data uji tetap di `tests/fixtures/seed.json`, jadi tidak terpengaruh perubahan data demo.
+Ada 91 uji yang memanggil Route Handler sungguhan dengan database sementara. 43 skenario dijalankan dua kali: dalam mode file dan dalam mode Postgres (`tests/pg-*.test.js`, memakai database tiruan `tests/fake-pg.js`). `tests/postgres.test.js` menambahkan 5 uji khusus Postgres: pengisian awal, sesi di database, batas login, penulisan bersamaan, dan optimistic locking. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin. `tests/seed.test.js` memeriksa data simulasi (15 akun bisa masuk, 3 orang per misi, isolasi kabin). Uji lainnya memakai data uji tetap di `tests/fixtures/seed.json`, jadi tidak terpengaruh perubahan data demo.
 
 ## Struktur project
 
@@ -200,8 +219,9 @@ hero-project/
 │       ├── http.js        # pembantu Route Handler: CSRF, sesi, role, JSON, error
 │       ├── access.js      # SEMUA aturan hak akses (saring data & periksa perubahan)
 │       ├── auth.js        # hash kata sandi scrypt, sesi, cookie, batas percobaan login
-│       ├── store.js       # baca/tulis database JSON secara atomik
-│       └── seed.json      # data simulasi awal (kata sandi polos hanya di sini, di-hash saat dimuat)
+│       ├── store.js       # baca/tulis data: Postgres (optimistic locking) atau file JSON
+│       ├── pg.js          # koneksi & semua SQL Postgres (Neon), aktif jika DATABASE_URL ada
+│       └── seed.js        # data simulasi awal (kata sandi polos hanya di sini, di-hash saat dimuat)
 ├── tests/                 # uji otorisasi & fitur Admin (npm test)
 └── data/                  # dibuat otomatis, berisi hero-db.json
 ```
@@ -236,11 +256,11 @@ Endpoint lain di bawah `/api/` dijawab `404` dalam format JSON.
 
 Ini prototipe. Sebelum dipakai sungguhan:
 
-- jalankan di belakang HTTPS dan set `HERO_SECURE_COOKIE=1`;
+- jalankan di belakang HTTPS (di Vercel sudah otomatis), atau set `HERO_SECURE_COOKIE=1`;
 - ganti semua kata sandi demo dan set `HERO_DEMO=0`;
-- sesi disimpan di memori, jadi semua pengguna perlu masuk lagi setelah server dimulai ulang. Karena itu jalankan sebagai **satu proses Node** (`next start` atau server mandiri); platform serverless seperti Vercel tidak cocok tanpa memindahkan sesi dan data ke penyimpanan bersama;
+- tanpa `DATABASE_URL`, sesi disimpan di memori dan data di satu file, jadi jalankan sebagai **satu proses Node**. Untuk Vercel atau banyak instance, pakai Postgres (lihat Deploy ke Vercel);
 - batas percobaan login memakai alamat dari header `X-Forwarded-For` (entri paling kanan), karena Route Handler Next.js tidak bisa membaca socket. Taruh server di belakang reverse proxy yang mengisi header ini;
-- database berupa satu file JSON; untuk banyak pengguna sekaligus, pindahkan ke database sungguhan (skema PostgreSQL ada di menu Riset & SQL).
+- di Postgres seluruh data masih disimpan sebagai satu dokumen JSONB, sehingga setiap penyimpanan menulis ulang seluruh data. Ini cukup untuk puluhan pengguna. Untuk skala lebih besar, pecah menjadi tabel-tabel (skema relasional ada di menu Riset & SQL).
 
 ## Mengubah tampilan
 

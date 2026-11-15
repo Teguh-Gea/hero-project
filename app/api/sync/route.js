@@ -17,9 +17,9 @@ export const POST = handler(async ({ req, me }) => {
     if (result.applied) await store.save();
     // Akun yang dihapus admin kehilangan sesinya
     const accountIds = new Set(db.accounts.map((a) => a.id));
-    changes
-        .filter((c) => c && c.table === 'accounts' && c.op === 'delete' && !accountIds.has(c.row && c.row.id))
-        .forEach((c) => auth.destroySessionsForAccount(c.row.id));
+    for (const c of changes) {
+        if (c && c.table === 'accounts' && c.op === 'delete' && c.row && !accountIds.has(c.row.id)) await auth.destroySessionsForAccount(c.row.id);
+    }
     const fresh = db.accounts.find((a) => a.id === me.account.id);
     return json(200, {
         applied: result.applied,

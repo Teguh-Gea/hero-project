@@ -19,6 +19,6 @@ export const POST = handler(async ({ req, me, params }) => {
     const { releasedCabins } = promoteToAdmin(db, target);
     await store.save();
     // Sesi lama pengguna itu (di portal astronot) diakhiri; ia masuk lagi lewat portal admin
-    auth.destroySessionsForAccount(target.id);
+    await auth.destroySessionsForAccount(target.id);
     return json(200, { user: describeUser(target, db, me), releasedCabins });
 }, { roles: ['admin'] });

@@ -3,11 +3,10 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { useTempData, dbNow } from './helpers.js';
 
-process.env.HERO_SEED_FILE = path.join(process.cwd(), 'tests', 'fixtures', 'seed.json');
-process.env.HERO_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'hero-test-'));
+useTempData();
 
 let R, authz, store;
 before(async () => {
@@ -54,20 +53,20 @@ test('belum login: API protected menolak 401', async () => {
     assert.equal((await call(R.db, 'GET', { cookie: 'hero_sid=palsu' })).status, 401, 'cookie palsu');
 });
 
-test('belum login: halaman portal dialihkan ke halaman login', () => {
-    assert.equal(authz.portalRedirect(null, 'admin', 'app'), '/admin/login');
-    assert.equal(authz.portalRedirect('palsu', 'astronot', 'app'), '/astronot/login');
-    assert.equal(authz.portalRedirect(null, 'admin', 'login'), null);
+test('belum login: halaman portal dialihkan ke halaman login', async () => {
+    assert.equal(await authz.portalRedirect(null, 'admin', 'app'), '/admin/login');
+    assert.equal(await authz.portalRedirect('palsu', 'astronot', 'app'), '/astronot/login');
+    assert.equal(await authz.portalRedirect(null, 'admin', 'login'), null);
 });
 
 test('sudah login: hanya portal sesuai role; salah portal dialihkan', async () => {
     const a = await login(ADMIN, 'admin');
     const k = await login(KENJI, 'astronot');
-    assert.equal(authz.portalRedirect(sid(a), 'admin', 'app'), null);
-    assert.equal(authz.portalRedirect(sid(a), 'astronot', 'app'), '/admin');
-    assert.equal(authz.portalRedirect(sid(a), 'admin', 'login'), '/admin');
-    assert.equal(authz.portalRedirect(sid(k), 'astronot', 'app'), null);
-    assert.equal(authz.portalRedirect(sid(k), 'admin', 'app'), '/astronot');
+    assert.equal(await authz.portalRedirect(sid(a), 'admin', 'app'), null);
+    assert.equal(await authz.portalRedirect(sid(a), 'astronot', 'app'), '/admin');
+    assert.equal(await authz.portalRedirect(sid(a), 'admin', 'login'), '/admin');
+    assert.equal(await authz.portalRedirect(sid(k), 'astronot', 'app'), null);
+    assert.equal(await authz.portalRedirect(sid(k), 'admin', 'app'), '/astronot');
     assert.equal((await call(R.session, 'GET', { cookie: k, query: '?portal=admin' })).status, 403);
     assert.equal((await call(R.login, 'POST', { body: { email: ADMIN, password: 'password123', portal: 'astronot' } })).status, 403);
 });
@@ -81,7 +80,7 @@ test('logout mengakhiri sesi', async () => {
 test('permintaan tanpa header CSRF ditolak', async () => {
     const a = await login(ADMIN, 'admin');
     assert.equal((await call(R.role, 'POST', { cookie: a, body: { role: 'admin' }, params: { id: 'ACC-AST-0067' }, csrf: false })).status, 403);
-    assert.equal(store.get().accounts.find((x) => x.id === 'ACC-AST-0067').role, 'astronaut');
+    assert.equal((await dbNow()).accounts.find((x) => x.id === 'ACC-AST-0067').role, 'astronaut');
 });
 
 // ---------------------------------------------------------------- Anggota Cabin (Kenji, INC-051-N2)
@@ -100,7 +99,7 @@ test('Anggota: tidak bisa input/ubah data lingkungan cabin', async () => {
     const k = await login(KENJI, 'astronot');
     const r = await sync(k, { table: 'cabinReadings', op: 'insert', row: reading('CAB-K1', 'INC-051-N2') });
     assert.equal(r.data.applied, 0);
-    const existing = store.get().cabinReadings.find((x) => x.moduleId === 'INC-051-N2');
+    const existing = (await dbNow()).cabinReadings.find((x) => x.moduleId === 'INC-051-N2');
     const u = await sync(k, { table: 'cabinReadings', op: 'update', row: { ...existing, co2: 9 } });
     assert.equal(u.data.applied, 0);
 });
@@ -114,22 +113,22 @@ test('Anggota: boleh input data kesehatan sendiri, tidak untuk rekan atau cabin 
     const other = { id: 'VIT-K3', assignmentId: 'ASG-AST-0012-INC-004', day: 150, hr: 60 };
     assert.equal((await sync(k, { table: 'vitalSigns', op: 'insert', row: other })).data.applied, 0);
     // IDOR: mengubah profil astronot cabin lain dengan ID langsung
-    const alex = store.get().astronauts.find((a) => a.id === 'AST-0012');
+    const alex = (await dbNow()).astronauts.find((a) => a.id === 'AST-0012');
     assert.equal((await sync(k, { table: 'astronauts', op: 'update', row: { ...alex, weightKg: 1 } })).data.applied, 0);
 });
 
 test('Anggota: tidak bisa mengubah role, menunjuk diri sebagai pemimpin, atau akses fitur Admin', async () => {
     const k = await login(KENJI, 'astronot');
-    const me = store.get().accounts.find((a) => a.email === KENJI);
+    const me = (await dbNow()).accounts.find((a) => a.email === KENJI);
     assert.equal((await sync(k, { table: 'accounts', op: 'update', row: { ...me, role: 'admin' } })).data.applied, 0);
     assert.equal((await call(R.role, 'POST', { cookie: k, body: { role: 'admin' }, params: { id: me.id } })).status, 403);
     assert.equal((await call(R.role, 'POST', { cookie: k, body: { role: 'cabin_leader' }, params: { id: me.id } })).status, 403);
-    const mod = store.get().modules.find((m) => m.id === 'INC-051-N2');
+    const mod = (await dbNow()).modules.find((m) => m.id === 'INC-051-N2');
     assert.equal((await sync(k, { table: 'modules', op: 'update', row: { ...mod, leaderAstronautId: 'AST-0038' } })).data.applied, 0);
     assert.equal((await call(R.users, 'GET', { cookie: k })).status, 403);
     assert.equal((await call(R.reset, 'POST', { cookie: k })).status, 403);
-    assert.equal(store.get().accounts.find((a) => a.email === KENJI).role, 'astronaut');
-    assert.equal(store.get().modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, 'AST-0154');
+    assert.equal((await dbNow()).accounts.find((a) => a.email === KENJI).role, 'astronaut');
+    assert.equal((await dbNow()).modules.find((m) => m.id === 'INC-051-N2').leaderAstronautId, 'AST-0154');
 });
 
 // ---------------------------------------------------------------- Pemimpin Cabin (Elena, INC-051-N2)
@@ -147,10 +146,10 @@ test('Pemimpin: tidak bisa menyentuh cabin lain (cabinId dari client tidak diper
     // memindahkan bacaan miliknya ke cabin lain
     assert.equal((await sync(e, { table: 'cabinReadings', op: 'update', row: reading('CAB-E1', 'INC-004-N2') })).data.applied, 0);
     // mengubah/menghapus bacaan cabin lain dengan ID langsung, dengan moduleId dipalsukan
-    const foreign = store.get().cabinReadings.find((x) => x.moduleId === 'INC-004-N2');
+    const foreign = (await dbNow()).cabinReadings.find((x) => x.moduleId === 'INC-004-N2');
     assert.equal((await sync(e, { table: 'cabinReadings', op: 'update', row: { ...foreign, moduleId: 'INC-051-N2' } })).data.applied, 0);
     assert.equal((await sync(e, { table: 'cabinReadings', op: 'delete', row: { id: foreign.id, moduleId: 'INC-051-N2' } })).data.applied, 0);
-    assert.ok(store.get().cabinReadings.some((x) => x.id === foreign.id && x.moduleId === 'INC-004-N2'));
+    assert.ok((await dbNow()).cabinReadings.some((x) => x.id === foreign.id && x.moduleId === 'INC-004-N2'));
     const { data } = await call(R.db, 'GET', { cookie: e });
     assert.ok(!data.db.astronauts.some((a) => a.id === 'AST-0012' || a.id === 'AST-0067'), 'kru cabin lain tidak terlihat');
     assert.ok(data.db.cabinReadings.every((r) => r.moduleId === 'INC-051-N2'));
@@ -173,7 +172,7 @@ test('Multiple Admin: dua Admin login dan bekerja bersamaan', async () => {
     const [d1, d2] = await Promise.all([call(R.db, 'GET', { cookie: a1 }), call(R.db, 'GET', { cookie: a2 })]);
     assert.equal(d1.status, 200);
     assert.equal(d2.status, 200);
-    assert.equal(d1.data.db.astronauts.length, store.get().astronauts.length);
+    assert.equal(d1.data.db.astronauts.length, (await dbNow()).astronauts.length);
     const { data } = await call(R.users, 'GET', { cookie: a1 });
     assert.equal(data.users.filter((u) => u.role === 'admin').length, 2);
     assert.ok(data.users.every((u) => !('passwordHash' in u)));
@@ -195,12 +194,12 @@ test('Admin: tidak bisa menurunkan Admin lain (API role)', async () => {
     }
     assert.equal((await call(R.role, 'POST', { cookie: a2, body: { role: 'admin' }, params: { id: 'ACC-ADMIN-01' } })).status, 409);
     assert.equal((await call(R.role, 'POST', { cookie: a2, body: { role: 'cabin_member' }, params: { id: 'ACC-ADMIN-02' } })).status, 403, 'diri sendiri');
-    assert.equal(store.get().accounts.find((a) => a.id === 'ACC-ADMIN-01').role, 'admin');
+    assert.equal((await dbNow()).accounts.find((a) => a.id === 'ACC-ADMIN-01').role, 'admin');
 });
 
 test('Admin: tidak bisa menurunkan, menghapus, atau mengambil alih Admin lain lewat /api/sync', async () => {
     const a2 = await login(ADMIN2, 'admin');
-    const a1row = { ...store.get().accounts.find((a) => a.id === 'ACC-ADMIN-01') };
+    const a1row = { ...(await dbNow()).accounts.find((a) => a.id === 'ACC-ADMIN-01') };
     delete a1row.passwordHash;
     const tries = [
         { table: 'accounts', op: 'update', row: { ...a1row, role: 'astronaut' } },
@@ -209,12 +208,12 @@ test('Admin: tidak bisa menurunkan, menghapus, atau mengambil alih Admin lain le
         { table: 'accounts', op: 'delete', row: { id: 'ACC-ADMIN-01' } }
     ];
     for (const c of tries) assert.equal((await sync(a2, c)).data.applied, 0, `${c.op} ${JSON.stringify(c.row).slice(0, 60)}`);
-    const a1 = store.get().accounts.find((a) => a.id === 'ACC-ADMIN-01');
+    const a1 = (await dbNow()).accounts.find((a) => a.id === 'ACC-ADMIN-01');
     assert.equal(a1.role, 'admin');
     assert.equal(a1.email, ADMIN);
     await login(ADMIN, 'admin'); // kata sandi lama tetap berlaku
     // Admin tetap bisa mengubah akunnya sendiri (selain role)
-    const own = { ...store.get().accounts.find((a) => a.id === 'ACC-ADMIN-02') };
+    const own = { ...(await dbNow()).accounts.find((a) => a.id === 'ACC-ADMIN-02') };
     delete own.passwordHash;
     assert.equal((await sync(a2, { table: 'accounts', op: 'update', row: { ...own, title: 'Flight Surgeon' } })).data.applied, 1);
     assert.equal((await sync(a2, { table: 'accounts', op: 'update', row: { ...own, role: 'astronaut' } })).data.applied, 0);
@@ -234,14 +233,16 @@ test('Admin: mengangkat Anggota Cabin menjadi Admin', async () => {
     assert.equal(r.status, 200);
     assert.equal(r.data.user.role, 'admin');
     assert.equal(r.data.user.protected, true);
-    assert.equal(store.get().accounts.find((x) => x.id === 'ACC-AST-0067').role, 'admin');
-    assert.ok(store.get().astronauts.some((x) => x.id === 'AST-0067'), 'profil & data kesehatan tetap ada');
+    assert.equal((await dbNow()).accounts.find((x) => x.id === 'ACC-AST-0067').role, 'admin');
+    assert.ok((await dbNow()).astronauts.some((x) => x.id === 'AST-0067'), 'profil & data kesehatan tetap ada');
     assert.equal((await call(R.db, 'GET', { cookie: m })).status, 401, 'sesi lama diakhiri');
     assert.equal((await call(R.login, 'POST', { body: { email: MARCUS, password: 'password123', portal: 'astronot' } })).status, 403);
     const m2 = await login(MARCUS, 'admin');
     assert.equal((await call(R.users, 'GET', { cookie: m2 })).status, 200, 'Admin baru punya hak penuh');
     // persisten di file database
-    const onDisk = JSON.parse(fs.readFileSync(path.join(process.env.HERO_DATA_DIR, 'hero-db.json'), 'utf8'));
+    const onDisk = process.env.HERO_TEST_PG === '1'
+        ? globalThis.__heroFakePg.db.state.data
+        : JSON.parse(fs.readFileSync(path.join(process.env.HERO_DATA_DIR, 'hero-db.json'), 'utf8'));
     assert.equal(onDisk.accounts.find((x) => x.id === 'ACC-AST-0067').role, 'admin');
 });
 
@@ -250,19 +251,19 @@ test('Admin: mengangkat Pemimpin Cabin menjadi Admin melepas kepemimpinannya', a
     const r = await call(R.role, 'POST', { cookie: a, body: { role: 'admin' }, params: { id: 'ACC-AST-0012' } });
     assert.equal(r.status, 200);
     assert.deepEqual(r.data.releasedCabins.sort(), ['INC-001-N2', 'INC-004-N2']);
-    assert.ok(store.get().modules.filter((x) => x.id !== 'INC-051-N2').every((x) => x.leaderAstronautId === null));
+    assert.ok((await dbNow()).modules.filter((x) => x.id !== 'INC-051-N2').every((x) => x.leaderAstronautId === null));
     // Admin yang baru diangkat juga terlindungi dari Admin lain
     const m = await login(MARCUS, 'admin');
     assert.equal((await call(R.role, 'POST', { cookie: m, body: { role: 'cabin_leader' }, params: { id: 'ACC-AST-0012' } })).status, 403);
     // dan tidak bisa ditunjuk lagi sebagai pemimpin cabin
-    const mod = store.get().modules.find((x) => x.id === 'INC-004-N2');
+    const mod = (await dbNow()).modules.find((x) => x.id === 'INC-004-N2');
     assert.equal((await sync(a, { table: 'modules', op: 'update', row: { ...mod, leaderAstronautId: 'AST-0012' } })).data.applied, 0);
 });
 
 test('Penunjukan Pemimpin Cabin oleh Admin tetap lewat penugasan cabin', async () => {
-    store.get().assignments.push({ id: 'ASG-T-1', astronautId: 'AST-0038', missionId: 'INC-004', quartersModuleId: 'INC-004-N2', launchDate: '2026-06-23', plannedDays: 180 });
     const a = await login(ADMIN, 'admin');
-    const mod = store.get().modules.find((x) => x.id === 'INC-004-N2');
+    assert.equal((await sync(a, { table: 'assignments', op: 'insert', row: { id: 'ASG-T-1', astronautId: 'AST-0038', missionId: 'INC-004', launchDate: '2026-06-23', plannedDays: 180 } })).data.applied, 1);
+    const mod = (await dbNow()).modules.find((x) => x.id === 'INC-004-N2');
     assert.equal((await sync(a, { table: 'modules', op: 'update', row: { ...mod, leaderAstronautId: 'AST-0038' } })).data.applied, 1);
     const k = await login(KENJI, 'astronot');
     assert.equal((await call(R.session, 'GET', { cookie: k })).data.user.appRole, 'cabin_leader');

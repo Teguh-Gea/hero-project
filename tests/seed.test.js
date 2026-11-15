@@ -1,14 +1,13 @@
 // Uji data simulasi bawaan (lib/server/seed.json): 6 Admin, 9 astronot di 3 misi, semua bisa masuk.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { useTempData, route, call, login as loginAs } from './helpers.js';
+import { useTempData, dbNow, route, call, login as loginAs } from './helpers.js';
 
-useTempData({ seed: path.join(process.cwd(), 'lib', 'server', 'seed.json') });
+useTempData({ seed: null });
 let R, db;
 before(async () => {
     R = { login: await route('login'), db: await route('db'), session: await route('session'), sync: await route('sync') };
-    db = (await import('../lib/server/store.js')).get();
+    db = await dbNow();
 });
 
 const ADMINS = ['teguh', 'jeremy', 'naila', 'abel', 'vinson', 'nabillah'];
