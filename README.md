@@ -58,6 +58,8 @@ Secara bawaan `next start` mendengarkan di semua antarmuka jaringan. Untuk memba
 | `PORT` | `3000` | Port server (atau `npm start -- -p 4000`) |
 | `HERO_DATA_DIR` | `./data` | Folder file database |
 | `HERO_DEMO` | `1` | `0` untuk menyembunyikan daftar akun demo di halaman login |
+| `GEMINI_API_KEY` | (kosong) | Mengaktifkan suara neural HERO AI Assistant (Gemini TTS) lewat `/api/tts`. Key hanya ada di server. Tanpa key, dipakai suara perangkat yang paling natural |
+| `GEMINI_TTS_VOICE` | `Sulafat` | Nama suara Gemini, mis. `Achernar`, `Aoede`, `Kore` |
 | `DATABASE_URL` | (kosong) | URL Postgres (Neon). Jika ada, data & sesi disimpan di Postgres; jika tidak, di file + memori |
 | `HERO_SECURE_COOKIE` | `0` (`1` di Vercel) | `1` jika server di belakang HTTPS (cookie sesi diberi tanda `Secure`) |
 
@@ -80,6 +82,15 @@ Setiap astronot punya data pra-terbang dan 3 pemeriksaan di orbit (mata OD/OS, m
 Akun Admin hanya bisa masuk lewat portal admin, dan akun astronot hanya lewat portal astronot.
 
 **Mengganti data lama:** jika `data/hero-db.json` sudah ada dari versi sebelumnya (akun `@nasa.gov`), akun lama masih tersimpan di sana. Hentikan server, jalankan `npm run reset-data`, lalu jalankan lagi; atau login sebagai Admin lalu pakai **Simulasi input → Reset ke data contoh**.
+
+## HERO AI Assistant (suara)
+
+- Bahasa bawaan **Inggris**. Pilihan ID/EN diingat di browser.
+- Mikrofon "Hi HERO" menyala otomatis setelah masuk, dan bisa dimatikan atau dinyalakan lewat tombol mikrofon di widget asisten (kanan bawah).
+- Suara paling manusiawi didapat dengan mengisi `GEMINI_API_KEY` di Vercel (Settings → Environment Variables), lalu deploy ulang. Suara disintesis di server (`/api/tts`, hanya untuk pengguna yang sudah masuk), jadi key tidak pernah sampai ke browser.
+- Tanpa key, asisten memakai suara perangkat yang paling natural, misalnya "Microsoft … Online (Natural)" di Edge atau "Google US English" di Chrome, dengan nada dan tempo normal.
+- Daftar perintah (**Command list**) mengikuti role: perintah khusus Admin (Misi, Pengguna, Riset & SQL, tambah astronot, protokol) tidak tampil untuk astronot. Jika tetap diucapkan, asisten menolaknya dengan sopan.
+- Logika perintah ada di `lib/voice-commands.js`. `tests/voice-commands.test.js` memastikan setiap frasa di daftar dipahami persis seperti deskripsinya, dalam kedua bahasa dan untuk kedua role.
 
 ## Autentikasi & otorisasi
 
@@ -187,7 +198,7 @@ Astronot baru tidak lagi mendapat kata sandi bawaan `password123`. Kata sandi ju
 npm test
 ```
 
-Ada 91 uji yang memanggil Route Handler sungguhan dengan database sementara. 43 skenario dijalankan dua kali: dalam mode file dan dalam mode Postgres (`tests/pg-*.test.js`, memakai database tiruan `tests/fake-pg.js`). `tests/postgres.test.js` menambahkan 5 uji khusus Postgres: pengisian awal, sesi di database, batas login, penulisan bersamaan, dan optimistic locking. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin. `tests/seed.test.js` memeriksa data simulasi (15 akun bisa masuk, 3 orang per misi, isolasi kabin). Uji lainnya memakai data uji tetap di `tests/fixtures/seed.json`, jadi tidak terpengaruh perubahan data demo.
+Ada 98 uji yang memanggil Route Handler sungguhan dengan database sementara. 43 skenario dijalankan dua kali: dalam mode file dan dalam mode Postgres (`tests/pg-*.test.js`, memakai database tiruan `tests/fake-pg.js`). `tests/postgres.test.js` menambahkan 5 uji khusus Postgres: pengisian awal, sesi di database, batas login, penulisan bersamaan, dan optimistic locking. `tests/rbac.test.js` menguji akses tanpa login, salah portal, isolasi cabin, IDOR, `cabinId` palsu, upaya menurunkan/menghapus/mengambil alih Admin, pengangkatan Admin, dan beberapa Admin bersamaan. `tests/admin-crud.test.js` menguji aturan kata sandi, CRUD akun, CRUD misi, semisi = sekabin, dan sinkronisasi atomik. `tests/cabin-leader.test.js` menguji penggantian Pemimpin Cabin. `tests/seed.test.js` memeriksa data simulasi (15 akun bisa masuk, 3 orang per misi, isolasi kabin). Uji lainnya memakai data uji tetap di `tests/fixtures/seed.json`, jadi tidak terpengaruh perubahan data demo.
 
 ## Struktur project
 
